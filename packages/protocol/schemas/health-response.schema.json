@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "status": {
+      "type": "string",
+      "const": "ok"
+    },
+    "service": {
+      "type": "string",
+      "const": "texas-gto-analysis"
+    },
+    "version": {
+      "type": "string",
+      "const": "0.1.0"
+    },
+    "strategy": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "const": "pluribus_style"
+        },
+        "status": {
+          "type": "string",
+          "const": "not_implemented"
+        },
+        "supported_games": {
+          "minItems": 0,
+          "maxItems": 0,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "provider",
+        "status",
+        "supported_games"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "status",
+    "service",
+    "version",
+    "strategy"
+  ],
+  "additionalProperties": false
+}
