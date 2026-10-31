@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.1"
+    },
+    "blueprint_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hero": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "opponent_mode": {
+      "type": "string",
+      "enum": [
+        "call",
+        "raise",
+        "fold"
+      ]
+    },
+    "model_source": {
+      "type": "string",
+      "const": "synthetic_bias"
+    },
+    "result": {
+      "type": "object",
+      "properties": {
+        "accepted": {
+          "type": "boolean"
+        },
+        "selected_weight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "model_gain": {
+          "type": "number"
+        },
+        "baseline_worst_case": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "candidate_worst_case": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "accepted",
+        "selected_weight",
+        "model_gain",
+        "baseline_worst_case",
+        "candidate_worst_case",
+        "reason"
+      ],
+      "additionalProperties": {}
+    }
+  },
+  "required": [
+    "schema_version",
+    "blueprint_id",
+    "hero",
+    "opponent_mode",
+    "model_source",
+    "result"
+  ],
+  "additionalProperties": false
+}

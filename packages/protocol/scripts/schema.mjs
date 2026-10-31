@@ -1,13 +1,31 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { z } from "zod";
-import { HealthResponseSchema } from "../src/index.ts";
+import {
+  HealthResponseSchema, SessionResponseSchema, TrainingJobSchema,
+  BlueprintsResponseSchema, AnalysisResponseSchema, EquityResponseSchema,
+  ProfilesResponseSchema,
+  HandStrengthResponseSchema, AdaptationResponseSchema,
+} from "../src/index.ts";
 
-const target = new URL("../schemas/health-response.schema.json", import.meta.url);
-const expected = `${JSON.stringify(z.toJSONSchema(HealthResponseSchema), null, 2)}\n`;
-if (process.argv.includes("--check")) {
-  if ((await readFile(target, "utf8")) !== expected) {
-    throw new Error("Protocol schema is stale. Run npm run schema:generate.");
+const schemas = {
+  "health-response": HealthResponseSchema,
+  "session-response": SessionResponseSchema,
+  "training-job": TrainingJobSchema,
+  "blueprints-response": BlueprintsResponseSchema,
+  "analysis-response": AnalysisResponseSchema,
+  "equity-response": EquityResponseSchema,
+  "profiles-response": ProfilesResponseSchema,
+  "hand-strength-response": HandStrengthResponseSchema,
+  "adaptation-response": AdaptationResponseSchema,
+};
+for (const [name, schema] of Object.entries(schemas)) {
+  const target = new URL(`../schemas/${name}.schema.json`, import.meta.url);
+  const expected = `${JSON.stringify(z.toJSONSchema(schema), null, 2)}\n`;
+  if (process.argv.includes("--check")) {
+    if ((await readFile(target, "utf8")) !== expected) {
+      throw new Error(`${name} schema is stale. Run npm run schema:generate.`);
+    }
+  } else {
+    await writeFile(target, expected);
   }
-} else {
-  await writeFile(target, expected);
 }

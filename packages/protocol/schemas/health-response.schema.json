@@ -4,7 +4,7 @@
   "properties": {
     "schema_version": {
       "type": "string",
-      "const": "1.0"
+      "const": "1.1"
     },
     "status": {
       "type": "string",
@@ -27,15 +27,27 @@
         },
         "status": {
           "type": "string",
-          "const": "not_implemented"
+          "const": "research_ready"
         },
         "supported_games": {
-          "minItems": 0,
-          "maxItems": 0,
           "type": "array",
-          "items": {
-            "type": "string"
-          }
+          "prefixItems": [
+            {
+              "type": "string",
+              "const": "kuhn"
+            },
+            {
+              "type": "string",
+              "const": "leduc"
+            },
+            {
+              "type": "string",
+              "const": "holdem"
+            }
+          ],
+          "items": false,
+          "minItems": 3,
+          "maxItems": 3
         }
       },
       "required": [

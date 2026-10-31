@@ -1,6 +1,6 @@
 # 以 Pluribus 为核心的决策引擎
 
-状态：已建立侧栏、健康服务、协议、游戏接口和遗憾匹配基础函数，具体见 [软件实现结构](software-architecture.md)；完整策略求解与训练尚未实现。此前已完成 TexasSolver 第三方命令行构建与两个河牌样例验证，并阅读对手建模与策略集成论文、Pluribus 的 Science 正文。用户已明确将“结合玩家画像和博弈策略推荐决策”列为核心能力，并允许大规模计算放在服务器端。规则依据见 [蘑菇规则](mushroom-rules.md)，资料核查状态见 [研究记录](research-sources.md)。
+状态：已实现离线模拟、自博弈、blueprint/checkpoint、有限博弈全范围搜索和独立评测，具体见 [软件实现结构](software-architecture.md)与[真实算法实验](offline-algorithms.md)。完整六人德州策略尚未充分训练；本文同时保留后续完整目标，不能将全部设计视为已交付。此前已完成 TexasSolver 第三方命令行构建与两个河牌样例验证，并阅读对手建模与策略集成论文、Pluribus 的 Science 正文。用户已明确将“结合玩家画像和博弈策略推荐决策”列为核心能力，并允许大规模计算放在服务器端。规则依据见 [蘑菇规则](mushroom-rules.md)，资料核查状态见 [研究记录](research-sources.md)。
 
 算法优先级已按用户要求确定：**Pluribus 是整个项目的核心算法依据**。围绕其自博弈 blueprint、实时搜索与多后续策略机制构建默认策略引擎；画像是基线之上的适应扩展，蘑菇是状态与收益扩展。TexasSolver 提供局部对照，Deep CFR／ReBeL 等保留为后续研究。先完成关闭画像也可独立验证的核心流程，再评估附加模块的增益。
 
@@ -192,7 +192,7 @@ Pluribus 原文报告 blueprint 约 12,400 CPU 核时、训练内存少于 512GB
 | services/analysis | analyze、cancel、health | 版本一致的异步分析、预算和降级 |
 | engines/opponent（增强阶段） | snapshot、update、action_likelihood、adapt | 条件行为后验、身份作用域和受约束调整 |
 
-以上为完整职责规划。当前骨架只提供游戏接口、遗憾匹配、协议和健康服务；`PluribusStyleProvider` 仅报告不支持，尚无 blueprint 或搜索。完成实现后，该 provider 将组合 blueprint 与 search 对外提供策略；画像关闭时仅返回经校验的基线。TexasSolver 的实验适配器独立于该默认实现。
+以上为完整职责规划。当前已实现 CFR/MCCFR、blueprint、有限博弈全范围搜索与独立最佳响应；`PluribusStyleProvider` 检查规则和训练信息集覆盖，服务按预算组合 blueprint 与 search，未知节点不生成建议。画像关闭时主线独立运行。实际模块路径、实验规模和未实现项目以软件结构／离线算法记录为准；TexasSolver 不作为默认引擎依赖。
 
 | 算法里程碑 | 交付与验收 | 依赖 |
 | --- | --- | --- |

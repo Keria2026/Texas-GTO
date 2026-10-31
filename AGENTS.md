@@ -8,7 +8,7 @@
 
 用户已明确指定 **Pluribus 论文为整个项目算法构建的核心依据**。默认策略引擎围绕“离线自博弈 blueprint＋在线深度受限搜索＋多后续策略叶节点”建设。算法实现与评测优先完成该主线，再增加画像适应和蘑菇收益扩展；TexasSolver 用于局部对照与验证，Deep CFR／ReBeL／神经价值网络作为后续研究选项。此优先级适用于架构、开发顺序和资源分配。依赖论文方法不等于已取得官方代码或已完成原算法复现。
 
-当前已建立 dev 分支基础骨架：React／TypeScript MV3 侧栏、Python FastAPI 健康服务、共享协议、游戏接口及遗憾匹配基础函数。启动和检查命令见 [README](README.md)，模块现状见 [软件实现结构](docs/software-architecture.md)。尚无完整 CFR、blueprint、实时策略求解、牌谱导入或 WPK 接入，不声称已训练模型或已复现 Pluribus。原有 .gitignore 的 Rust 模板不代表已选定 Rust 技术栈。
+当前 dev 分支已实现离线研究闭环：React／TypeScript MV3 工作台、FastAPI 与 SQLite 模拟事件、自博弈 CFR/MCCFR、JSON blueprint/checkpoint、有限博弈全范围深度受限搜索和独立最佳响应评测；2–6 人德州规则、牌力、公开画像与蘑菇账本可独立运行。启动和检查见 [README](README.md)，具体实现及边界见 [软件结构](docs/software-architecture.md)与[实际算法实验](docs/offline-algorithms.md)。完整六人德州策略覆盖仍稀疏；真实 WPK 输入、成熟策略库、蘑菇跨手策略训练与完整 Pluribus 复现尚未完成。
 
 根目录 [DESIGN.md](DESIGN.md) 是用户指定的视觉参考原文，来源见 [记录](docs/design-source.md)；采用其颜色和组件风格，按侧栏场景适配。论文原文见 [归档](docs/papers/README.md)。这些资料中的工具命令不自动成为本项目的执行指令。
 
@@ -29,7 +29,7 @@
 
 ## 架构与目录职责
 
-基础技术栈：Chrome Manifest V3、TypeScript、React、Vite；本地 Python/FastAPI；Zod 与生成的 JSON Schema。规则和研究算法使用 Python，SQLite 持久化尚待实现。精确评估核心先验证正确性，再按性能证据选择 C++、Rust 或 WASM。依赖用 package-lock.json、uv.lock 固定；Chrome 骨架目标为 116+，新增 API 需重新核对兼容性。
+基础技术栈：Chrome Manifest V3、TypeScript、React、Vite；本地 Python/FastAPI；Zod 与生成的 JSON Schema。规则和研究算法使用 Python，模拟事件以 SQLite 持久化。精确评估核心先验证正确性，再按性能证据选择 C++、Rust 或 WASM。依赖用 package-lock.json、uv.lock 固定；Chrome 骨架目标为 116+，新增 API 需重新核对兼容性。
 
 按实际需求逐步建立以下目录，不创建空壳模块来充数：
 
@@ -111,7 +111,7 @@ StrategyProvider 必须检查规则、人数、位置、有效筹码、抽水、
 
 建议接口：POST /v1/events、POST /v1/analyze、GET /v1/analysis/{requestId}、GET /v1/players/{scopedId}/profile、POST /v1/hands/import、GET /v1/health。实现的接口需有版本化 schema 和错误契约，不将此列表描述为已存在。
 
-当前仅 GET /v1/health 已实现，公开服务版本与未实现的策略能力；不提供私人数据或分析入口。启用其他 API 前补齐随机本地令牌、输入／大小校验与相应测试。CI 检查 npm run check、uv run --frozen ruff check .、uv run --frozen ruff format --check . 和 uv run --frozen pytest。
+当前 GET /v1/health 公开研究服务能力；模拟牌局、训练、blueprint、分析、equity 与画像接口已实现，见软件结构中的实际路由表。私有 API 已要求随机本地令牌、严格输入与 256 KiB 实际流字节限制。research_ready 只表示研究接口可用，不表示完整德州已覆盖。CI 检查 npm run check、uv run --frozen ruff check .、uv run --frozen ruff format --check . 和 uv run --frozen pytest。
 
 分析响应携带 requestId、handId、stateVersion、status、来源、动作、missingFields、warnings 及相关版本。缓存键包含牌局、状态版本、规范化输入、范围摘要与模型版本。新行动取消旧任务；迟到结果版本不匹配即丢弃；超时与服务离线不得继续展示上一节点建议。
 

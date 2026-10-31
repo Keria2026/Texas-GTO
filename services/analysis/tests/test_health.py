@@ -40,6 +40,6 @@ def test_wildcard_origins_cannot_be_configured(origin):
         create_app((origin,))
 
 
-def test_analysis_is_not_exposed_before_implementation():
+def test_private_analysis_requires_a_token():
     with TestClient(create_app()) as client:
-        assert client.post("/v1/analyze", json={}).status_code == 404
+        assert client.post("/v1/analyze", json={}).status_code == 401

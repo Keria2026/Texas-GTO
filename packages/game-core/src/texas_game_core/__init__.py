@@ -1,4 +1,4 @@
-"""Game contracts for the A0 research harness; poker rules are not implemented."""
+"""Immutable poker rules, card evaluation and finite-game research contracts."""
 
 from .interfaces import CHANCE_PLAYER, ExtensiveGame
 

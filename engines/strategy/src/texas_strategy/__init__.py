@@ -1,4 +1,4 @@
-"""Pluribus-inspired strategy foundations, without a trained solver."""
+"""Pluribus-inspired offline training, coverage checks and bounded research search."""
 
 from .provider import PluribusStyleProvider
 from .regret import regret_matching

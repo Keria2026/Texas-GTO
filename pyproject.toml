@@ -13,6 +13,7 @@ dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.34,<1"]
 
 [project.scripts]
 texas-analysis = "texas_analysis.__main__:main"
+texas-research = "texas_strategy.cli:main"
 texas-wpk-inspect = "texas_wpk.inspect_har:main"
 
 [dependency-groups]
@@ -27,7 +28,7 @@ packages = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["services/analysis/tests", "engines/strategy/tests", "adapters/wpk/tests"]
+testpaths = ["services/analysis/tests", "engines/strategy/tests", "adapters/wpk/tests", "packages/game-core/tests"]
 addopts = "-q"
 
 [tool.ruff]

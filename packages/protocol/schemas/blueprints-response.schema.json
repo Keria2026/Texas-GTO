@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "blueprints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "blueprint_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "information_sets": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "blueprint_id",
+          "metadata",
+          "information_sets"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "blueprints"
+  ],
+  "additionalProperties": false
+}

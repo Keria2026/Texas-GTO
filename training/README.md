@@ -1,9 +1,15 @@
 # 自博弈训练入口
 
-此目录预留给经过验证的 Pluribus 方法自博弈作业；当前尚无训练命令或模型权重。
+训练、续训与评测已由 `texas-research` CLI 提供，实现位于 `engines/strategy/src/texas_strategy/cli.py`。完整命令和真实数值见 [离线算法说明](../docs/offline-algorithms.md)及[实验汇总](../docs/experiments/offline-baseline.json)。
 
-实现顺序：小博弈精确参照 → MCCFR／Linear CFR → 可恢复 blueprint → 多后续策略搜索 → 标准六人有限预算实验。接口来自 `packages/game-core`，策略基础函数来自 `engines/strategy`；详细里程碑见 [决策引擎](../docs/decision-engine.md)。
+```sh
+uv run --frozen texas-research train --game kuhn --players 2 \
+  --algorithm cfr --weighting linear --iterations 3000 \
+  --blueprint artifacts/kuhn.json --checkpoint checkpoints/kuhn.json
+```
 
-作业配置需保存规则、动作／信息抽象版本、种子、迭代预算、内存限制、剪枝开关与检查点路径。停止与恢复不得改变累积权重或静默重置平均策略。工件写入被 Git 忽略的 `artifacts/` 或 `checkpoints/`；独立评测通过后才注册为可用 blueprint。
+保存的 JSON 工件绑定规则、算法、权重、迭代数、种子、信息集行动支持和校验和；checkpoint 另外保存 RNG 与累计遗憾／平均策略。续训不得改变规则或静默重置平均策略。工件与牌谱被 Git 忽略。
 
-首轮训练使用 CPU 小任务测量正确性与资源。当前没有自动启动大规模训练、申请付费服务器或配置 GPU 作业。
+完整遍历用于可验证小博弈；德州只接受有预算的 MCCFR 实验和抽样对照。尚无训练成熟的六人策略库，稀疏工件的默认均匀回退不算覆盖。根本优化方向是抽象和测量后的训练优化，不能靠增加一条服务命令声称已有超人水平。
+
+大规模作业可独立部署在服务器 CPU 进程，显式设置 `--seconds`、`--max-nodes` 和操作系统内存约束；当前未配置付费基础设施或 GPU 任务。
