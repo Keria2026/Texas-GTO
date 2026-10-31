@@ -1,7 +1,7 @@
 {
     "schema_version": "1.0",
     "kind": "requirements_profile",
-    "profile_id": "wpk-8p-2-4-straddle8-mushroom20-draft1",
+    "profile_id": "wpk-8p-2-4-straddle8-mushroom20-draft2",
     "source": "user_report_with_earlier_client_screenshot",
     "implementation_status": "not_supported_by_current_runtime",
     "target_players": 8,
@@ -18,25 +18,25 @@
         "enabled": false
     },
     "straddle": {
-        "mandatory": null,
-        "position": null,
-        "first_actor": null,
-        "retains_raise_option": null,
+        "mandatory": true,
+        "position": "left_of_big_blind",
+        "first_actor": "left_of_straddle",
+        "retains_raise_option": true,
         "restraddle_allowed": null
     },
-    "stack_policy": null,
+    "stack_policy": "initial_buyin_then_carry_balances_between_hands",
     "mushroom": {
         "payment_source": "table_stack",
         "base_points": 20,
         "small_blind_total_points": 40,
-        "payment_timing": null,
+        "payment_timing": "before_deal",
         "award_condition": "small_blind_is_sole_main_pot_winner",
         "side_pot_only_awards": false,
         "split_main_pot_awards": false,
         "unawarded_pool_carries": true,
         "insufficient_fee": "forced_out_of_play_pending_top_up_before_next_hand",
         "underpopulation_action": "end_game_and_enter_settlement",
-        "minimum_players": null,
+        "minimum_players": 4,
         "settlement_policy": null,
         "remainder_policy": null
     },
@@ -47,7 +47,9 @@
         "mushroom_award_requires_reveal": true
     },
     "conflicts": [
-        "Latest user report ends the game underpopulation; earlier screenshot freezes the mushroom pool. Threshold and final distribution need confirmation."
+        "User confirms fewer than four players ends the game and enters settlement; this overrides the earlier screenshot freeze-and-resume behavior. Final distribution details remain unconfirmed."
     ],
-    "complete_for_training": false
+    "complete_for_training": false,
+    "initial_buyin_points": 800,
+    "reset_stacks_each_hand": false
 }
