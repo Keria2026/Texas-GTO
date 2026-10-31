@@ -4,7 +4,7 @@
 
 ## 项目目标与当前状态
 
-依据《德州扑克 GTO Chrome 插件设计思路》v0.1（2026-10-31）及用户后续要求：构建 Chrome 侧栏、可回放的数据核心与可在服务器运行的决策服务。核心交付是根据玩家画像、博弈基线和不确定性约束推荐高期望收益策略；牌力、画像和采集是其输入与验证基础。大规模训练与搜索允许放在服务器端，具体方案见 [决策引擎](docs/decision-engine.md)，参考资料的阅读和核查状态见 [研究记录](docs/research-sources.md)。
+依据《德州扑克 GTO Chrome 插件设计思路》v0.1（2026-10-31）及用户后续要求：构建安装在用户 Chrome 中、实时获取 WPK 牌局数据的扩展，以及承担算法计算、搜索、训练与模型管理的服务器后端。核心交付是根据玩家画像、博弈基线和不确定性约束推荐高期望收益策略；牌力、画像和采集是其输入与验证基础。服务器后端是生产必需组件；终端用户不需要启动本地 Python 服务。本地工作台仅用于开发验证，部署边界见 [扩展与服务器架构](docs/extension-server-architecture.md)。具体方案见 [决策引擎](docs/decision-engine.md)，参考资料的阅读和核查状态见 [研究记录](docs/research-sources.md)。
 
 用户已明确指定 **Pluribus 论文为整个项目算法构建的核心依据**。默认策略引擎围绕“离线自博弈 blueprint＋在线深度受限搜索＋多后续策略叶节点”建设。算法实现与评测优先完成该主线，再增加画像适应和蘑菇收益扩展；TexasSolver 用于局部对照与验证，Deep CFR／ReBeL／神经价值网络作为后续研究选项。此优先级适用于架构、开发顺序和资源分配。依赖论文方法不等于已取得官方代码或已完成原算法复现。
 
@@ -29,7 +29,7 @@
 
 ## 架构与目录职责
 
-基础技术栈：Chrome Manifest V3、TypeScript、React、Vite；本地 Python/FastAPI；Zod 与生成的 JSON Schema。规则和研究算法使用 Python，模拟事件以 SQLite 持久化。精确评估核心先验证正确性，再按性能证据选择 C++、Rust 或 WASM。依赖用 package-lock.json、uv.lock 固定；Chrome 骨架目标为 116+，新增 API 需重新核对兼容性。
+基础技术栈：Chrome Manifest V3、TypeScript、React、Vite；服务器 Python/FastAPI；Zod 与生成的 JSON Schema。规则、权威状态、账本与重计算在服务器，扩展负责采集、输入校验、有界缓存与展示。现有本地研究实现使用 SQLite，生产存储与作业隔离按扩展与服务器架构迁移。精确评估核心先验证正确性，再按性能证据选择 C++、Rust 或 WASM。依赖用 package-lock.json、uv.lock 固定；Chrome 骨架目标为 116+，新增 API 需重新核对兼容性。
 
 按实际需求逐步建立以下目录，不创建空壳模块来充数：
 
@@ -38,7 +38,7 @@
 | apps/extension | 扩展入口、侧栏、权限、消息及可恢复后台任务 |
 | packages/protocol | 版本化事件、状态和接口 schema |
 | packages/game-core | 规则、整数金额、合法动作、纯状态归约 |
-| services/analysis | 本地 API、任务调度、缓存与取消 |
+| services/analysis | 服务器 API、事件接入、任务调度、缓存与取消；保留本地研究入口 |
 | engines/evaluator | 牌型、nuts、范围 equity |
 | engines/strategy | Pluribus 主线：抽象、遗憾求解、blueprint、到达概率、多后续策略搜索；通过 StrategyProvider 输出 |
 | engines/opponent | 机会统计、画像、条件范围与校准 |
@@ -121,7 +121,7 @@ StrategyProvider 必须检查规则、人数、位置、有效筹码、抽水、
 
 扩展采用最小权限和指定站点访问，不默认申请全站权限。页面消息是不可信输入，验证来源与字段，不得触发任意本地操作。截图、本地通信与 Chrome API 权限按官方文档核验。
 
-本地 API 仅绑定 loopback，使用随机访问令牌、精确 Origin 校验与请求大小限制；令牌不得写入仓库、日志或共享配置。历史和画像默认本地保存，提供删除、导出与保留期限，不采集账号凭据或无关浏览记录。
+开发用本地 API 继续只绑定 loopback；生产扩展通过 HTTPS 直接访问服务器。随机本地令牌不能当作生产多用户鉴权。生产牌谱／画像按用户隔离保存在服务器，扩展只缓存必要的待确认事件与当前状态；提供删除、导出与保留期限，不上传 WPK 登录凭据或无关浏览记录。令牌不得写入仓库、日志或页面桥接消息。
 
 远端分析使用 HTTPS、鉴权和租户隔离，仅发送必要的规范化状态与作用域化标识。默认不上传原始截图和昵称；私有牌谱加入共享训练需明确数据使用范围。服务器训练工件记录来源、校验和、规则、数据与模型版本及独立评测结果。
 

@@ -1,8 +1,10 @@
 # 软件实现结构
 
-当前为可运行的离线研究工作台。算法依据是 [Pluribus 正文](pluribus-paper.md)，实现参数与实际实验见 [离线算法说明](offline-algorithms.md)。真实网站输入未接入；所有 HTTP 牌局是显式创建的模拟手牌。
+目标部署为 **用户 Chrome 扩展实时获取 WPK 数据 → HTTPS 服务器 → 算法／训练 worker → 侧栏结果**，生产终端无需本地算法服务。完整职责和迁移方案见 [扩展与服务器架构](extension-server-architecture.md)。
 
-## 数据与算法流程
+下文记录当前可运行的离线研究工作台实现，不代表生产架构已经落地。算法依据是 [Pluribus 正文](pluribus-paper.md)，实现参数与实际实验见 [离线算法说明](offline-algorithms.md)。真实网站输入未接入；所有 HTTP 牌局是显式创建的模拟手牌。
+
+## 当前研究版本的数据与算法流程
 
 ```mermaid
 flowchart TD
@@ -33,7 +35,7 @@ flowchart TD
 | `analysis` | SQLite 会话、训练队列与取消、blueprint 注册、有限搜索与牌力 API | 单机研究服务；远程租户／生产部署未实现 |
 | `extension` | 模拟操作、训练进度与评测、频率、equity、公开画像 | 只连接本机，没有页面采集 |
 
-## 本地 API
+## 当前开发用本地 API
 
 所有私有路由要求 `Authorization: Bearer <local-token>`。`GET /v1/health` 只公开服务元数据；`research_ready` 表示研究接口可用，不表示所有信息集已有训练策略。
 
@@ -75,6 +77,6 @@ SQLite 在一个事务内检查版本、追加行动及自动机会事件、保�
 
 ## 浏览器与视觉
 
-生产包为 Chrome MV3 侧栏，使用 `setPanelBehavior` 打开，全程不注入站点脚本。只请求 sidePanel 和本机 HTTP host 权限。令牌留在界面内存；固定本机地址、有限请求超时、AbortController 和状态版本守卫共同防止旧结果继续展示。
+当前构建产物为离线研究版 Chrome MV3 侧栏，使用 `setPanelBehavior` 打开，目前不注入站点脚本；目标生产版本将按已验证的数据来源增加 WPK 采集适配器。只请求 sidePanel 和本机 HTTP host 权限。令牌留在界面内存；固定本机地址、有限请求超时、AbortController 和状态版本守卫共同防止旧结果继续展示。
 
 [DESIGN.md](../DESIGN.md) 保留用户指定参考；实现采用深紫 `#4a154b`、奶油／淡紫表面和胶囊按钮，适配窄侧栏。字体全部为本机字体栈。真实浏览器工作台验证与正式 Chrome 扩展安装验收分别记录，构建成功不能替代后者。
