@@ -12,8 +12,9 @@
 | engines/strategy | 遗憾匹配基础函数、明确返回不支持的 provider | MCCFR／Linear CFR、blueprint、到达分布和多后续策略搜索 |
 | services/analysis | 本机 GET /v1/health、精确 Origin 检查、接口测试 | 持久事件、任务预算、取消、模型注册与鉴权 |
 | training | 作业与工件的开发说明 | 可恢复自博弈、独立对局评测和检查点 |
+| adapters/wpk | 本地 HAR 路由／字段结构报告与合成数据测试 | 依据真实样本实现平台消息映射与事件归约 |
 
-不提前建立空的 evaluator、opponent 或平台适配器实现；已有设计定义这些职责，进入对应阶段再添加代码。没有自动下注或页面采集入口。
+不提前建立空的 evaluator 或 opponent 实现；WPK 目录目前只有离线证据分析工具。网站入口已由用户确定为 h5.wpk.com，真实协议尚未取得，见 [接口核查](wpk-network-discovery.md)。没有自动下注或页面采集入口。
 
 ## 核心依赖方向
 

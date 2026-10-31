@@ -42,6 +42,8 @@ htmlcov/
 *.sqlite*
 artifacts/
 checkpoints/
+captures/
+*.har
 
 # Local configuration and credentials
 .env

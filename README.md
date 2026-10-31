@@ -60,6 +60,7 @@ packages/protocol/       Zod 契约、生成的 JSON Schema、协议测试
 packages/game-core/      Python 不完全信息博弈接口
 engines/strategy/        Pluribus 方法的接口与遗憾匹配起点
 services/analysis/       FastAPI 本地服务与接口测试
+adapters/wpk/           本地 HAR 结构分析；真实 WPK 协议尚未接入
 training/               自博弈作业的开发入口说明
 fixtures/protocol/      跨语言共用的合成协议样例
 docs/papers/            用户上传的两篇论文原文及校验和
@@ -73,6 +74,7 @@ AGENTS.md               项目开发约束与算法优先级
 
 - [核心算法与 A0–A5 里程碑](docs/decision-engine.md)
 - [软件实现结构与当前接口](docs/software-architecture.md)
+- [WPK 接口采样、访问证据与本地分析工具](docs/wpk-network-discovery.md)
 - [Pluribus 原文笔记](docs/pluribus-paper.md)及[论文原文目录](docs/papers/README.md)
 - [玩家画像与专家适应](docs/opponent-modeling-paper.md)
 - [蘑菇规则及未确认边界](docs/mushroom-rules.md)
