@@ -91,6 +91,8 @@ TEXAS_GTO_ROOT=/absolute/path/to/Texas-GTO npm run test:python:browser
 
 ## 接下来需要的数据与实现
 
+TGTO-FronEnd 0.4 已加入有界的页面分发入口结构探针，可在用户本机导出字段名和类型，见 [探针说明](https://github.com/Keria2026/TGTO-FronEnd/blob/dev/docs/wpk-probe.md)。这些报告仅保存在本地，不进入网络或业务 outbox；当前字段转换仍未实现。
+
 仍需验证 WPK 已解码消息与公开状态的脱敏样本，尤其手牌号、座位/稳定作用域 ID、hero 底牌、公共牌、行动金额含义、主池/边池、straddle 和蘑菇结算。前端文档里的页面对象名称不足以确定字段语义。
 
 在这些映射确认后新增独立业务事件流、可靠状态归约和真实分析请求。八人/straddle/蘑菇会话规则与匹配模型仍需独立扩展、训练和评测；当前 2–6 人研究模型不能直接作为目标桌推荐来源。此次接入没有变更既有求解器，也不代表完整 Pluribus 复现或真实桌最佳决策已经完成。
