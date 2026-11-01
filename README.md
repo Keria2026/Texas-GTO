@@ -92,6 +92,7 @@ uv run --frozen pytest
 | `services/analysis` | SQLite 事件、训练队列、模型注册、本地受限 API |
 | `adapters/wpk` | HAR 结构检查；真实平台协议尚未接入 |
 
+- [TGTO-FronEnd 实时采集与通信源码核查](docs/tgto-frontend-review.md)
 - [软件结构与 API](docs/software-architecture.md)
 - [核心算法设计与后续里程碑](docs/decision-engine.md)
 - [Pluribus 阅读笔记](docs/pluribus-paper.md)、[论文原文](docs/papers/README.md)

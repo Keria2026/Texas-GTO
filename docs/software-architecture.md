@@ -1,6 +1,6 @@
 # 软件实现结构
 
-目标部署为 **用户 Chrome 扩展实时获取 WPK 数据 → HTTPS 服务器 → 算法／训练 worker → 侧栏结果**，生产终端无需本地算法服务。完整职责和迁移方案见 [扩展与服务器架构](extension-server-architecture.md)。
+目标部署为 **用户 Chrome 扩展实时获取 WPK 数据 → HTTPS/WSS 服务器 → 算法／训练 worker → 侧栏结果**，生产终端无需本地算法服务。完整职责和迁移方案见 [扩展与服务器架构](extension-server-architecture.md)。正式前端采用用户指定的 TGTO-FronEnd，具体代码与接入缺口见 [核查记录](tgto-frontend-review.md)。
 
 下文记录当前可运行的离线研究工作台实现，不代表生产架构已经落地。算法依据是 [Pluribus 正文](pluribus-paper.md)，实现参数与实际实验见 [离线算法说明](offline-algorithms.md)。真实网站输入未接入；所有 HTTP 牌局是显式创建的模拟手牌。
 
