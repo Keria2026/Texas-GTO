@@ -37,7 +37,9 @@ flowchart TD
 
 ## 当前开发用本地 API
 
-所有私有路由要求 `Authorization: Bearer <local-token>`。`GET /v1/health` 只公开服务元数据；`research_ready` 表示研究接口可用，不表示所有信息集已有训练策略。
+新增 WS `/v1/research/stream` 接收独立 TGTO 网络元数据，使用精确扩展 Origin 和首消息 token 鉴权；持久化与能力协商见 [对接说明](tgto-integration.md)。它不创建模拟牌局，也不复用 HTTP schema。
+
+所有私有 HTTP 路由要求 `Authorization: Bearer <local-token>`。`GET /v1/health` 只公开服务元数据；`research_ready` 表示研究接口可用，不表示所有信息集已有训练策略。
 
 | 方法 / 路径 | 用途 |
 | --- | --- |

@@ -1,4 +1,4 @@
-"""Loopback-only research API. All gameplay is explicitly synthetic."""
+"""Loopback-only research API. Synthetic gameplay and separate TGTO metadata ingestion."""
 
 import hmac
 import os
@@ -9,7 +9,7 @@ from pathlib import Path
 from threading import BoundedSemaphore
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -31,6 +31,7 @@ from .models import (
     SubmitAction,
     TrainRequest,
 )
+from .network_stream import NetworkStore, network_stream
 from .research import QueueFullError, ResearchManager, analyze
 from .storage import ConflictError, SessionStore
 
@@ -117,6 +118,7 @@ def create_app(
         raise ValueError("Local token must contain at least 24 ASCII characters without whitespace")
     directory = Path(data_dir or os.getenv("TEXAS_DATA_DIR", "artifacts/local"))
     resources = {}
+    capture_resources = {}
     resource_lock = BoundedSemaphore(1)
     compute_slots = BoundedSemaphore(2)
 
@@ -126,6 +128,12 @@ def create_app(
                 resources["store"] = SessionStore(directory / "sessions.sqlite3")
                 resources["manager"] = ResearchManager(directory / "models")
         return resources["store"], resources["manager"]
+
+    def get_network_store():
+        with resource_lock:
+            if not capture_resources:
+                capture_resources["store"] = NetworkStore(directory / "capture.sqlite3")
+        return capture_resources["store"]
 
     @asynccontextmanager
     async def lifespan(app):
@@ -165,6 +173,10 @@ def create_app(
     @app.exception_handler(ValueError)
     async def invalid(_, exc):
         return JSONResponse({"detail": str(exc)}, status_code=422)
+
+    @app.websocket("/v1/research/stream")
+    async def capture_stream(ws: WebSocket):
+        await network_stream(ws, origins=allowed_origins, token=token, get_store=get_network_store)
 
     @app.get("/v1/health", response_model=HealthResponse)
     def health():

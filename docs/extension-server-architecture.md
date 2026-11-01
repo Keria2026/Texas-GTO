@@ -2,9 +2,9 @@
 
 依据用户明确的部署要求：用户在自己的 Chrome 安装扩展，由扩展实时获取 WPK 牌局数据；服务器承担算法计算、搜索、自博弈训练、画像与模型管理。终端用户不需要安装 Python、uv 或运行本地算法服务。本地研究工作台继续用于开发、测试与复现实验。
 
-前端实现基础现已确定为用户指定的 [TGTO-FronEnd](https://github.com/Keria2026/TGTO-FronEnd)，已核查 CDP 网络采集、WASM、IndexedDB 与 WebSocket 代码。当前能力、精确协议及与本后端的缺口见 [源码接入核查](tgto-frontend-review.md)。本文件此前的 HTTP 传输建议保留为设计背景，接入默认对齐已有 WebSocket 能力并迁移到 WSS。
+前端实现基础现已确定为用户指定的 [TGTO-FronEnd](https://github.com/Keria2026/TGTO-FronEnd)，已核查 CDP 网络采集、WASM、IndexedDB 与 WebSocket 代码。初始核查见 [源码接入核查](tgto-frontend-review.md)；已实现的 Python 接收、持久 ACK、状态协商与 WSS 配置见 [对接说明](tgto-integration.md)。本文件此前的 HTTP 传输建议保留为设计背景，接入默认对齐已有 WebSocket 能力并迁移到 WSS。
 
-本文为目标架构及迁移约定。当前代码尚未接入 WPK 或远程服务器，不能将下列待实现组件描述为已部署。
+本文为目标架构及迁移约定。当前代码已接通网络元数据，尚未接入 WPK 业务数据或部署公网服务器，不能将下列待实现组件描述为已部署。
 
 ## 目标数据流
 
@@ -59,7 +59,7 @@ flowchart LR
 
 ## 实时传输与一致性
 
-接入采用用户指定前端已有的 WebSocket 鉴权、能力协商、批次与 ACK 契约；生产传输改为 WSS。当前能力为 network_events_v1，业务 capture_events_v1 与分析结果消息需分别新增并验证，不能直接向现有客户端推送未知结果类型。继续支持确认、重连和游标恢复；建立连接本身不保证实时性或不丢事件。访问令牌不放在 URL 查询参数中。
+接入采用用户指定前端已有的 WebSocket 鉴权、能力协商、批次与 ACK 契约；生产传输改为 WSS。当前能力为 network_events_v1 和 network_status_v1（仅接入阻断状态），业务 capture_events_v1 与分析结果消息需分别新增并验证，不能直接向现有客户端推送未知结果类型。继续支持确认、重连和游标恢复；建立连接本身不保证实时性或不丢事件。访问令牌不放在 URL 查询参数中。
 
 目标事件信封包含 `schema_version`、`event_id`、`session_id`、`table_id`、`hand_id`、`seq`、`source_event_id`（若有）、`observed_at`、`rules_version`、`source`、`confidence` 和经过校验的 payload。采集端观察序号与可用的源序号均需保留；服务器不能仅凭客户端时间或自增 seq 断言没有漏源事件。
 
