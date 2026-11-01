@@ -59,7 +59,7 @@ flowchart LR
 
 ## 实时传输与一致性
 
-接入采用用户指定前端已有的 WebSocket 鉴权、能力协商、批次与 ACK 契约；生产传输改为 WSS。当前能力为 network_events_v1 和 network_status_v1（仅接入阻断状态），业务 capture_events_v1 与分析结果消息需分别新增并验证，不能直接向现有客户端推送未知结果类型。继续支持确认、重连和游标恢复；建立连接本身不保证实时性或不丢事件。访问令牌不放在 URL 查询参数中。
+接入采用用户指定前端已有的 WebSocket 鉴权、能力协商、批次与 ACK 契约；生产传输改为 WSS。当前已支持 network_events_v1、network_status_v1、capture_events_v1 和协商的 capture_state_v1（观察状态及未支持覆盖说明），见 [对接说明](tgto-integration.md)。真实策略分析结果仍需独立契约和目标规则验证，不能直接向旧客户端推送未知结果类型。继续支持确认、重连和游标恢复；建立连接本身不保证实时性或不丢事件。访问令牌不放在 URL 查询参数中。
 
 目标事件信封包含 `schema_version`、`event_id`、`session_id`、`table_id`、`hand_id`、`seq`、`source_event_id`（若有）、`observed_at`、`rules_version`、`source`、`confidence` 和经过校验的 payload。采集端观察序号与可用的源序号均需保留；服务器不能仅凭客户端时间或自增 seq 断言没有漏源事件。
 

@@ -1,98 +1,111 @@
 # TGTO 扩展与 Python 后端对接
 
-本次实现的是可运行的网络采集接入：Chrome → CDP → WASM → IndexedDB → WebSocket → Python → SQLite → 持久确认与侧栏状态。正式采集前端仍在 [TGTO-FronEnd](https://github.com/Keria2026/TGTO-FronEnd)，本仓库的 `apps/extension` 继续用于算法研究。
+正式采集前端在 [TGTO-FronEnd](https://github.com/Keria2026/TGTO-FronEnd) 的 `dev` 分支。已合并用户推送的 `2e72f34` 业务解析，并完成两条链路：
 
-**网络元数据不包含牌局状态。当前不从哈希猜测手牌，也不把网络序号当作牌局 stateVersion。** 本连接返回“业务数据缺失”，动作列表为空；既有 Pluribus 主线研究接口继续独立工作。`capture_events_v1`、WPK 业务适配和真实手牌的分析请求尚未实现。
+- 网络：Chrome CDP → WASM → IndexedDB → `network.append` → SQLite → `network.ack`。
+- 业务：页面可见状态 → WPK DTO → WASM 归约 → 独立业务 outbox → `capture.append` → Python 校验与状态重建 → 持久 ACK → 侧栏显示服务器状态。
 
-## 直接连接 Python 服务
+业务输入包含本人手牌、公共牌、玩家座位与可见筹码、确认动作、当前可见选项、结算与缺口。未知牌或金额保持 null，不生成模拟手牌、不读取对手未公开底牌、不上传本地原始网络载荷。旧结构探针保留作开发诊断，生产采集使用业务适配器，避免同时包装同一页面入口。
 
-1. 在 TGTO-FronEnd 运行 `npm ci`、`npm run build`，在 Chrome 扩展管理页加载 `dist/`，复制实际扩展 ID。
-2. 在 Texas-GTO 设置精确 Origin 后启动：
+**数据链路已通过合成样例验证。目标 8 人／straddle／蘑菇玩法的策略模型仍未覆盖，因此服务器返回 `unsupported` 和空动作列表。** `history_complete` 是采集器观察标记，客户端报告的操作范围不是服务器规则引擎认证的合法动作；结算守恒通过也不等于完整规则已核实。既有 Pluribus 研究接口继续独立运行。
+
+## 使用
+
+在两个仓库切到 `dev`，先构建扩展：
 
 ```sh
+# TGTO-FronEnd；Node 24、Rust 1.90+，安装 wasm32-unknown-unknown target。
+npm ci
+npm run build
+```
+
+在 Chrome 的 `chrome://extensions` 加载 `dist/`，复制实际扩展 ID。保持原安装路径和 ID，重新加载扩展即可升级；IndexedDB v1 原档案会迁移至 v2，新增服务器绑定设置，不删除原事件。
+
+```sh
+# Texas-GTO；Python 3.12、uv。
 uv sync --frozen
 TEXAS_ALLOWED_ORIGINS='chrome-extension://YOUR_ACTUAL_EXTENSION_ID' uv run --frozen texas-analysis
 ```
 
-将占位 ID 替换成扩展管理页的 32 位 ID；不能使用通配符。默认服务在 `127.0.0.1:8765`，可用 `TEXAS_PORT` 更改端口。默认生成的令牌保存在 `artifacts/local/session.token`，只自行读取后输入侧栏，不放入 URL 或仓库。重启时未设置 `TEXAS_API_TOKEN` 会重新生成令牌，浏览器需重新连接。
+替换实际 32 位 ID，不使用通配符。默认监听 `127.0.0.1:8765`。自行读取 `artifacts/local/session.token` 并输入侧栏；不要放进 URL 或仓库。未预设 `TEXAS_API_TOKEN` 时重启会生成新令牌。
 
-3. 在扩展选择 `ws://127.0.0.1:8765/v1/research/stream`，输入令牌、连接、开始采集。Python 接口取代 Node 参考接收器，二者不是必须同时启动。
-4. “后端已确认”表示元数据已持久化；“算法接入状态”单独显示业务数据缺失。默认依旧不上传本地原始载荷。换服务器地址时会从保留的档案重新排队上传元数据；同地址重连沿用确认进度。
+侧栏选择 `ws://127.0.0.1:8765/v1/research/stream`、连接服务、开始采集，然后在 WPK 入座。检查“业务适配已就绪”、“业务写入／后端确认”以及“服务器牌局与算法状态”。已在手中途接入会保留历史缺口。刷新页面或浏览器重启后需要人工重新开始采集。
 
-## 服务器 WSS 构建和运行
+Python 是实际研究后端；无需同时启动前端的 Node 参考接收器（8766）。参考接收器支持双流持久确认，但不提供 Python 的 `capture_state_v1`。
 
-终端用户仅安装扩展，Python 运行在服务器。给服务器配置 DNS 和 TLS 后，使用 [Caddy 示例](../deploy/Caddyfile.example) 将 WSS 代理到服务器本机的 8765。设置 Caddy 的 `TGTO_DOMAIN` 为实际域名。示例仅开放 stream 和 health，研究／训练 HTTP API 留在服务器本机。
+## 服务器部署构建
+
+终端用户只安装扩展，Python 运行在服务器。服务器 DNS／TLS 和 [Caddy 示例](../deploy/Caddyfile.example) 配置完成后，构建固定 WSS 地址的扩展：
 
 ```sh
-# 在 TGTO-FronEnd 中，域名必须替换为实际地址。
+# TGTO-FronEnd；替换成实际服务器域名。
 TGTO_BACKEND_URL='wss://analysis.example.com/v1/research/stream' npm run build
 ```
 
-构建同时写入运行时地址、manifest HTTPS 权限和 CSP；服务器构建只允许这一端点。禁止远端明文 WS、查询令牌、用户信息、fragment 和其他路径。服务器仍需配置安装包对应的精确 `TEXAS_ALLOWED_ORIGINS`。更换安装路径可能改变未打包扩展 ID，以实际 Chrome 管理页为准。
+构建同时写入运行时地址、manifest HTTPS 权限和 CSP。服务器包仅允许该端点；不允许远端明文 WS、查询令牌、用户名密码或其他路径。服务端配置安装包对应的精确 Origin。当前是单个所有者令牌，不是多用户鉴权。公网部署、真实 TLS 和真实 WPK 牌桌验收仍未完成。
 
-此版本沿用单个所有者的 `TEXAS_API_TOKEN`，不是多用户账户系统。不要把同一个服务令牌分发给不同用户；按用户撤销令牌、租户隔离、训练管理员权限与生产作业隔离仍未实现。尚未部署到公网服务器，也未验证实际域名 TLS；示例配置不代表部署完成。
+## 协议
 
-## 精确协议与存储行为
-
-HTTP health 的 schema 仍为 `1.1`；WebSocket 握手仍为 `1.2`；采集记录仍为 `tgto.network/0.1`，三者独立。
-
-新客户端首消息：
+HTTP health schema 保持 `1.1`；WebSocket 握手为 `1.2`。客户端：
 
 ```json
-{"type":"auth","token":"USER_PROVIDED_TOKEN","capabilities":["network_status_v1"]}
+{"type":"auth","token":"USER_PROVIDED_TOKEN","capabilities":["network_status_v1","capture_state_v1"]}
 ```
 
-服务器响应：
+服务器：
 
 ```json
-{"type":"ready","schema_version":"1.2","capabilities":["network_events_v1","network_status_v1"]}
+{"type":"ready","schema_version":"1.2","capabilities":["network_events_v1","network_status_v1","capture_events_v1","capture_state_v1"]}
 ```
 
-- 旧客户端不请求状态能力时只收到既有 ACK，避免未知消息导致停连。
-- `network.append`：最多 64 条，UTF-8 整帧最多 256 KiB；十进制字符串 u64 连续序号，从 1 开始。
-- Origin 必须是显式允许的 Chrome 扩展来源；令牌在首帧验证。鉴权期限 5 秒、已认证空闲期限 60 秒，客户端 20 秒 ping 保活。错误 Origin、凭据或协议不会确认事件。
-- 严格校验字段、类型、时间、opcode、帧长和摘要；拒绝未知字段／原始载荷／带查询、fragment 或凭据的端点。
-- `capture.sqlite3` 使用 WAL、FULL 同步、立即事务；按 `(origin, source_id, sequence)` 幂等。内容冲突、序号缺口、配额溢出整批回滚。ACK 始终是**本次批次尾序号**，即使持久 head 更大也不超前确认。
-- 网络档案与模拟 `sessions.sqlite3` 分开；不会初始化随机手牌或触发训练。
-- 配额为单 source 的规范 JSON 64 MiB、全部 source 合计 256 MiB、最多 256 个来源作用域。配额统计的是事件 JSON，数据库索引和 WAL 有额外开销；此版本没有自动清理与在线归档。达到配额停止接收并保留客户端队列。
-- 默认 token 只建立单用户部署边界；Origin 隔离用于防止不同扩展来源碰撞，不能当作多用户授权。
+`network.append` 使用 `tgto.network/0.1`；`capture.append` 使用 `tgto.capture/0.1`。业务事件完整字段与前端保持一致，见 [前端契约](https://github.com/Keria2026/TGTO-FronEnd/blob/dev/docs/protocol.md) 和 [Python 校验模型](../services/analysis/src/texas_analysis/capture_contract.py)。每个流使用独立 source UUID 和从 1 开始的规范十进制 u64 字符串序号；每批最多 64 条、256 KiB。客户端单批次在途并轮换来源，避免网络数据阻塞业务流。
 
-ACK 后，仅对协商了状态能力的连接发送：
+- 精确扩展 Origin、首帧令牌、5 秒鉴权期限、60 秒空闲期限；客户端 20 秒 ping。
+- 业务事件拒绝未知字段、非安全整数、重复牌／玩家／座位、非法别名、对手私有选项和结算不守恒。
+- 每个来源从序号 1 连续写入；相同序号同内容幂等，不同内容拒绝。事件、head 和观察状态在同一 SQLite 事务提交后才 ACK。
+- ACK 仅确认提交批次的末尾，不因旧批次重传而确认更晚的 head。冲突、缺号或存储失败不确认、不部分提交。
+- 状态按当前手重建；旧手结算单独归档，不能覆盖下一手。动作按源动作 ID 去重，补全已知值时拒绝冲突。缺口清除行动提示并标记历史不完整。
+- WASM 在换手、街道或可见状态变化时补发完整 snapshot，使接收端能恢复未变动的玩家和历史标记。旧适配器仅首次快照的档案不能补出未记录状态，应使用新版本重新采集。
+
+只有客户端请求了 `capture_state_v1`，业务 ACK 后才返回 `capture.state`：
 
 ```json
 {
-  "type":"network.status",
-  "schema":"tgto.network-status/0.1",
+  "schema":"tgto.capture-state/0.1",
+  "type":"capture.state",
   "source_id":"synthetic-source",
-  "through_sequence":"1",
-  "status":"blocked",
-  "reason":"business_events_unavailable",
-  "actions":[],
-  "missing_fields":["rules","hand_id","hero_cards","board","players","action_history"]
+  "through_sequence":"51",
+  "projection_version":"wpk-observation/1",
+  "state":{"...":"完整观察状态，字段定义见 capture_state.py"},
+  "analysis":{
+    "status":"unsupported",
+    "reason":"unverified_rules_and_strategy_coverage",
+    "actions":[],
+    "missing_fields":["verified_rule_profile","supported_strategy_model"]
+  }
 }
 ```
 
-这是版本化接入状态，不是分析结果。客户端拒绝未确认／超前状态；旧批次状态被忽略；侧栏只显示当前活动采集会话且与最新本地序号一致的状态。新记录、停止采集、换源、断线或浏览器重启都会让旧状态失效。后续真正的分析结果必须新增独立契约，携带手牌和状态版本，不能复用这个序号。
+上面的 state 是结构示意，不能作为合法请求样例。完整可重放事件在 [合成 fixture](../fixtures/hands/wpk-observed-synthetic.json)。状态包括当前 scope、街道、牌、玩家、确认动作、观察选项、历史／缺口／关闭标记、最近 8 手结算和最多 16 条待配对证据。每手动作最多 256 条；完整事件档案保留。
 
-## 验证
+客户端只显示已持久确认、与本地最新业务序号一致且属于当前活动会话的状态。停止、新事件、换源或断线使旧状态不再显示。重连后，若没有待传事件，等待下一条业务事件刷新服务器状态；此版没有独立查询恢复接口。旧批次重传不回传更新版本的状态。网络 `network.status` 仍仅说明该网络来源没有牌局字段，不能代替独立业务状态。
 
-后端新增 25 项接入测试，完整 Python 回归共 329 项通过。验证非法 Origin／token、超限与二进制帧、字段泄漏、冲突、乱序、配额回滚、u64、重启及旧客户端兼容。
+## 存储与验证
 
-TGTO-FronEnd 提供跨仓库测试：
+默认 `artifacts/local/capture.sqlite3`，WAL＋FULL，文件权限 0600。原 `network_events/network_heads` 保留；新增 `capture_events/capture_heads/capture_state`。作用域为 Origin＋流＋source＋sequence，不与合成 `sessions.sqlite3` 混用。每来源事件 JSON 限 64 MiB，每流总事件 JSON 限 256 MiB、256 个来源；索引、状态投影与 WAL 另有开销。没有自动清理和远端删除接口；容量满时拒收并保留客户端 outbox。换服务器地址会重排两类档案，同地址重连沿用确认进度。
 
 ```sh
-# 先完成两个仓库的依赖安装、前端 WASM/build，以及 Playwright Chromium 安装。
+# Texas-GTO
+uv run --frozen pytest
+npm run check
+# TGTO-FronEnd，两个 checkout 均已安装依赖并完成 WASM 构建
 TEXAS_GTO_ROOT=/absolute/path/to/Texas-GTO npm run test:python
-# 另行运行真实 Chromium 集成：
+# 需要允许加载未打包扩展的 Chromium；独立浏览器验收
 TEXAS_GTO_ROOT=/absolute/path/to/Texas-GTO npm run test:python:browser
 ```
 
-已通过的跨仓库测试使用真实 Uvicorn、前端生产传输代码、WASM 与合成消息，覆盖丢失 ACK、多批次、后端重启和不上传原始载荷；20 项前端 Node 测试通过。独立浏览器场景用于验证 Chromium 扩展到 Python 的接入状态显示，但本次云环境未完成浏览器验收：系统 Chromium 154 管理员策略禁止加载未打包扩展，Playwright 下载域名也被网络策略拒绝。既有浏览器套件因此失败，新增 Python 浏览器测试仅完成语法检查，尚未运行成功。所有输入均为合成数据，不能作为真实 WPK 字段映射或目标桌策略覆盖的验收。
+本次检查：Python 349 项、后端 npm 检查、前端 Node 41 项、Rust 8 项、离线原型 5 项和跨仓库 2 项全部通过；Rust fmt/clippy、前端 TypeScript/build、Python Ruff 与 12 份来源哈希检查通过。
 
-## 接下来需要的数据与实现
+跨仓库测试实际启动 Uvicorn，运行生产页面观察器、WASM、IndexedDB 和 WebSocket，覆盖丢失网络／业务 ACK、重传、多批次、后端重启、迟到结算、隐私字段排除和服务器状态版本。Python fixture 由前端 `node scripts/export-wpk-fixture.mjs` 生成，跨仓库测试逐事件检查其一致性。合成样例不能替代真实 WPK 的 200 手人工验收。
 
-TGTO-FronEnd 0.4 已加入有界的页面分发入口结构探针，可在用户本机导出字段名和类型，见 [探针说明](https://github.com/Keria2026/TGTO-FronEnd/blob/dev/docs/wpk-probe.md)。这些报告仅保存在本地，不进入网络或业务 outbox；当前字段转换仍未实现。
-
-仍需验证 WPK 已解码消息与公开状态的脱敏样本，尤其手牌号、座位/稳定作用域 ID、hero 底牌、公共牌、行动金额含义、主池/边池、straddle 和蘑菇结算。前端文档里的页面对象名称不足以确定字段语义。
-
-在这些映射确认后新增独立业务事件流、可靠状态归约和真实分析请求。八人/straddle/蘑菇会话规则与匹配模型仍需独立扩展、训练和评测；当前 2–6 人研究模型不能直接作为目标桌推荐来源。此次接入没有变更既有求解器，也不代表完整 Pluribus 复现或真实桌最佳决策已经完成。
+当前云环境不允许 Chromium 加载未打包扩展，Playwright 浏览器下载也受网络策略限制，浏览器测试未在这里重新通过；用户 `2e72f34` 的原环境验证记录保留在前端文档中，不作为本次合并后浏览器验收结果。

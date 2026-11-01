@@ -46,7 +46,14 @@ def authenticate(ws, status=False):
         auth["capabilities"] = ["network_status_v1"]
     ws.send_json(auth)
     assert ws.receive_json() == dict(
-        type="ready", schema_version="1.2", capabilities=["network_events_v1", "network_status_v1"]
+        type="ready",
+        schema_version="1.2",
+        capabilities=[
+            "network_events_v1",
+            "network_status_v1",
+            "capture_events_v1",
+            "capture_state_v1",
+        ],
     )
 
 

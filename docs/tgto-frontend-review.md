@@ -1,6 +1,6 @@
 # TGTO-FronEnd 源码结构与接入核查
 
-> 本文保留首次核查 `a2c6021` 时的事实。后续已实现 Python WS 接收、持久 ACK、协商的接入状态和构建时 WSS 配置，当前实现与验证以 [对接说明](tgto-integration.md) 为准。业务解码与真实行动建议仍未接入。
+> 本文保留首次核查 `a2c6021` 时的事实。后续已实现 Python WS 接收、持久 ACK、协商的接入状态和构建时 WSS 配置，当前实现与验证以 [对接说明](tgto-integration.md) 为准。后续已合并 `2e72f34` 业务解析，并完成 Python 双流接入与观察状态回传；真实行动建议仍未支持。下文的“尚未实现”均指首次核查快照。
 
 核查日期：2026-11-01（Asia/Shanghai）。用户指定仓库为 [Keria2026/TGTO-FronEnd](https://github.com/Keria2026/TGTO-FronEnd)，读取版本 `a2c6021ec7fb149812dfe5a7cc2167afa543305d`（包版本 0.2.0）。后端对照版本为 Texas-GTO `dev` 的 `0483bc2`。本次只读取前端源码并运行类型检查，未修改其运行代码，也未登录 WPK。
 

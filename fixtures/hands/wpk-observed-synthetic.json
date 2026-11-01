@@ -1,0 +1,1286 @@
+{
+  "description": "Synthetic WPK client fixture from TGTO-FronEnd 2e72f34 with integration snapshot updates; production page observer + WASM reducer. No real player data.",
+  "events": [
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "1",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "cards": [
+          "5h",
+          "Th"
+        ]
+      },
+      "hand_id": "table-1:1",
+      "kind": "hero_cards",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "2",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "players": [
+          {
+            "player_id": "hero",
+            "seat": 1,
+            "stack": 800
+          },
+          {
+            "player_id": "player-1",
+            "seat": 2,
+            "stack": 800
+          },
+          {
+            "player_id": "player-2",
+            "seat": 3,
+            "stack": 800
+          }
+        ]
+      },
+      "hand_id": "table-1:1",
+      "kind": "players_updated",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "3",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "board": [],
+        "hero_cards": [
+          "5h",
+          "Th"
+        ],
+        "history_complete": false,
+        "players": [
+          {
+            "player_id": "hero",
+            "seat": 1,
+            "stack": 800
+          },
+          {
+            "player_id": "player-1",
+            "seat": 2,
+            "stack": 800
+          },
+          {
+            "player_id": "player-2",
+            "seat": 3,
+            "stack": 800
+          }
+        ],
+        "rules_version": "wpk-observed-unverified-v1",
+        "street": "preflop",
+        "turn": null
+      },
+      "hand_id": "table-1:1",
+      "kind": "snapshot",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "4",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "cards": [
+          null,
+          null
+        ]
+      },
+      "hand_id": "table-1:1",
+      "kind": "hero_cards",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "5",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "board": [],
+        "hero_cards": [
+          null,
+          null
+        ],
+        "history_complete": false,
+        "players": [
+          {
+            "player_id": "hero",
+            "seat": 1,
+            "stack": 800
+          },
+          {
+            "player_id": "player-1",
+            "seat": 2,
+            "stack": 800
+          },
+          {
+            "player_id": "player-2",
+            "seat": 3,
+            "stack": 800
+          }
+        ],
+        "rules_version": "wpk-observed-unverified-v1",
+        "street": "between_hands",
+        "turn": null
+      },
+      "hand_id": "table-1:1",
+      "kind": "snapshot",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "6",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "hand_number": 2,
+        "history_complete": true
+      },
+      "hand_id": "table-1:2",
+      "kind": "hand_started",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "7",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "action": "PAY_MUSHROOM",
+        "amount_delta": 20,
+        "amount_to": null,
+        "player_id": "hero",
+        "source_event_id": "2001",
+        "source_round": "PRE_FLOP"
+      },
+      "hand_id": "table-1:2",
+      "kind": "action_confirmed",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "8",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "action": "PAY_MUSHROOM",
+        "amount_delta": 20,
+        "amount_to": null,
+        "player_id": "player-1",
+        "source_event_id": "2002",
+        "source_round": "PRE_FLOP"
+      },
+      "hand_id": "table-1:2",
+      "kind": "action_confirmed",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "9",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "action": "PAY_MUSHROOM",
+        "amount_delta": 20,
+        "amount_to": null,
+        "player_id": "player-2",
+        "source_event_id": "2003",
+        "source_round": "PRE_FLOP"
+      },
+      "hand_id": "table-1:2",
+      "kind": "action_confirmed",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "10",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "cards": [
+          "5h",
+          "Th"
+        ]
+      },
+      "hand_id": "table-1:2",
+      "kind": "hero_cards",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "11",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "board": [],
+        "hero_cards": [
+          "5h",
+          "Th"
+        ],
+        "history_complete": true,
+        "players": [
+          {
+            "player_id": "hero",
+            "seat": 1,
+            "stack": 800
+          },
+          {
+            "player_id": "player-1",
+            "seat": 2,
+            "stack": 800
+          },
+          {
+            "player_id": "player-2",
+            "seat": 3,
+            "stack": 800
+          }
+        ],
+        "rules_version": "wpk-observed-unverified-v1",
+        "street": "preflop",
+        "turn": null
+      },
+      "hand_id": "table-1:2",
+      "kind": "snapshot",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "12",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "turn": {
+          "call_amount": 2,
+          "legal_actions": [
+            "FOLD",
+            "CALL",
+            "RAISE"
+          ],
+          "max_raise_reported": 780,
+          "min_raise_reported": 8,
+          "player_id": "hero"
+        }
+      },
+      "hand_id": "table-1:2",
+      "kind": "action_requested",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "13",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "board": [],
+        "hero_cards": [
+          "5h",
+          "Th"
+        ],
+        "history_complete": true,
+        "players": [
+          {
+            "player_id": "hero",
+            "seat": 1,
+            "stack": 800
+          },
+          {
+            "player_id": "player-1",
+            "seat": 2,
+            "stack": 800
+          },
+          {
+            "player_id": "player-2",
+            "seat": 3,
+            "stack": 800
+          }
+        ],
+        "rules_version": "wpk-observed-unverified-v1",
+        "street": "preflop",
+        "turn": {
+          "call_amount": 2,
+          "legal_actions": [
+            "FOLD",
+            "CALL",
+            "RAISE"
+          ],
+          "max_raise_reported": 780,
+          "min_raise_reported": 8,
+          "player_id": "hero"
+        }
+      },
+      "hand_id": "table-1:2",
+      "kind": "snapshot",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "14",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "action": "SMALL_BLIND",
+        "amount_delta": 2,
+        "amount_to": 2,
+        "player_id": "hero",
+        "source_event_id": "2004",
+        "source_round": "PRE_FLOP"
+      },
+      "hand_id": "table-1:2",
+      "kind": "action_confirmed",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "15",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "action": "BIG_BLIND",
+        "amount_delta": 4,
+        "amount_to": 4,
+        "player_id": "player-1",
+        "source_event_id": "2005",
+        "source_round": "PRE_FLOP"
+      },
+      "hand_id": "table-1:2",
+      "kind": "action_confirmed",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "16",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "action": "CALL",
+        "amount_delta": 4,
+        "amount_to": 4,
+        "player_id": "player-2",
+        "source_event_id": "2006",
+        "source_round": "PRE_FLOP"
+      },
+      "hand_id": "table-1:2",
+      "kind": "action_confirmed",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "17",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "action": "RAISE",
+        "amount_delta": 10,
+        "amount_to": 12,
+        "player_id": "hero",
+        "source_event_id": "2007",
+        "source_round": "PRE_FLOP"
+      },
+      "hand_id": "table-1:2",
+      "kind": "action_confirmed",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "18",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "action": "CALL",
+        "amount_delta": 8,
+        "amount_to": 12,
+        "player_id": "player-1",
+        "source_event_id": "2008",
+        "source_round": "PRE_FLOP"
+      },
+      "hand_id": "table-1:2",
+      "kind": "action_confirmed",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "19",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "action": "FOLD",
+        "amount_delta": 0,
+        "amount_to": null,
+        "player_id": "player-2",
+        "source_event_id": "2009",
+        "source_round": "PRE_FLOP"
+      },
+      "hand_id": "table-1:2",
+      "kind": "action_confirmed",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "20",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "turn": null
+      },
+      "hand_id": "table-1:2",
+      "kind": "action_requested",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "21",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "board": [],
+        "hero_cards": [
+          "5h",
+          "Th"
+        ],
+        "history_complete": true,
+        "players": [
+          {
+            "player_id": "hero",
+            "seat": 1,
+            "stack": 800
+          },
+          {
+            "player_id": "player-1",
+            "seat": 2,
+            "stack": 800
+          },
+          {
+            "player_id": "player-2",
+            "seat": 3,
+            "stack": 800
+          }
+        ],
+        "rules_version": "wpk-observed-unverified-v1",
+        "street": "preflop",
+        "turn": null
+      },
+      "hand_id": "table-1:2",
+      "kind": "snapshot",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "22",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "cards": [
+          "7s",
+          "9h",
+          "3d"
+        ]
+      },
+      "hand_id": "table-1:2",
+      "kind": "board_updated",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "23",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "board": [
+          "7s",
+          "9h",
+          "3d"
+        ],
+        "hero_cards": [
+          "5h",
+          "Th"
+        ],
+        "history_complete": true,
+        "players": [
+          {
+            "player_id": "hero",
+            "seat": 1,
+            "stack": 800
+          },
+          {
+            "player_id": "player-1",
+            "seat": 2,
+            "stack": 800
+          },
+          {
+            "player_id": "player-2",
+            "seat": 3,
+            "stack": 800
+          }
+        ],
+        "rules_version": "wpk-observed-unverified-v1",
+        "street": "flop",
+        "turn": null
+      },
+      "hand_id": "table-1:2",
+      "kind": "snapshot",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "24",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "action": "CHECK",
+        "amount_delta": 0,
+        "amount_to": null,
+        "player_id": "hero",
+        "source_event_id": "2010",
+        "source_round": "FLOP"
+      },
+      "hand_id": "table-1:2",
+      "kind": "action_confirmed",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "25",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "action": "CHECK",
+        "amount_delta": 0,
+        "amount_to": null,
+        "player_id": "player-1",
+        "source_event_id": "2011",
+        "source_round": "FLOP"
+      },
+      "hand_id": "table-1:2",
+      "kind": "action_confirmed",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "26",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "cards": [
+          "7s",
+          "9h",
+          "3d",
+          "Js"
+        ]
+      },
+      "hand_id": "table-1:2",
+      "kind": "board_updated",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "27",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "board": [
+          "7s",
+          "9h",
+          "3d",
+          "Js"
+        ],
+        "hero_cards": [
+          "5h",
+          "Th"
+        ],
+        "history_complete": true,
+        "players": [
+          {
+            "player_id": "hero",
+            "seat": 1,
+            "stack": 800
+          },
+          {
+            "player_id": "player-1",
+            "seat": 2,
+            "stack": 800
+          },
+          {
+            "player_id": "player-2",
+            "seat": 3,
+            "stack": 800
+          }
+        ],
+        "rules_version": "wpk-observed-unverified-v1",
+        "street": "turn",
+        "turn": null
+      },
+      "hand_id": "table-1:2",
+      "kind": "snapshot",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "28",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "action": "CHECK",
+        "amount_delta": 0,
+        "amount_to": null,
+        "player_id": "hero",
+        "source_event_id": "2012",
+        "source_round": "TURN"
+      },
+      "hand_id": "table-1:2",
+      "kind": "action_confirmed",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "29",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "action": "CHECK",
+        "amount_delta": 0,
+        "amount_to": null,
+        "player_id": "player-1",
+        "source_event_id": "2013",
+        "source_round": "TURN"
+      },
+      "hand_id": "table-1:2",
+      "kind": "action_confirmed",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "30",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "cards": [
+          "7s",
+          "9h",
+          "3d",
+          "Js",
+          "Qd"
+        ]
+      },
+      "hand_id": "table-1:2",
+      "kind": "board_updated",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "31",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "board": [
+          "7s",
+          "9h",
+          "3d",
+          "Js",
+          "Qd"
+        ],
+        "hero_cards": [
+          "5h",
+          "Th"
+        ],
+        "history_complete": true,
+        "players": [
+          {
+            "player_id": "hero",
+            "seat": 1,
+            "stack": 800
+          },
+          {
+            "player_id": "player-1",
+            "seat": 2,
+            "stack": 800
+          },
+          {
+            "player_id": "player-2",
+            "seat": 3,
+            "stack": 800
+          }
+        ],
+        "rules_version": "wpk-observed-unverified-v1",
+        "street": "river",
+        "turn": null
+      },
+      "hand_id": "table-1:2",
+      "kind": "snapshot",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "32",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "action": "BET",
+        "amount_delta": 20,
+        "amount_to": 20,
+        "player_id": "hero",
+        "source_event_id": "2014",
+        "source_round": "RIVER"
+      },
+      "hand_id": "table-1:2",
+      "kind": "action_confirmed",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "33",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "action": "CALL",
+        "amount_delta": 20,
+        "amount_to": 20,
+        "player_id": "player-1",
+        "source_event_id": "2015",
+        "source_round": "RIVER"
+      },
+      "hand_id": "table-1:2",
+      "kind": "action_confirmed",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "34",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "board": [
+          "7s",
+          "9h",
+          "3d",
+          "Js",
+          "Qd"
+        ],
+        "hero_cards": [
+          "5h",
+          "Th"
+        ],
+        "history_complete": true,
+        "players": [
+          {
+            "player_id": "hero",
+            "seat": 1,
+            "stack": 800
+          },
+          {
+            "player_id": "player-1",
+            "seat": 2,
+            "stack": 800
+          },
+          {
+            "player_id": "player-2",
+            "seat": 3,
+            "stack": 800
+          }
+        ],
+        "rules_version": "wpk-observed-unverified-v1",
+        "street": "showdown",
+        "turn": null
+      },
+      "hand_id": "table-1:2",
+      "kind": "snapshot",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "35",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "players": [
+          {
+            "mushroom_awarded": 0,
+            "mushroom_paid": 20,
+            "net_chips": 16,
+            "player_id": "hero"
+          },
+          {
+            "mushroom_awarded": 0,
+            "mushroom_paid": 20,
+            "net_chips": -52,
+            "player_id": "player-1"
+          },
+          {
+            "mushroom_awarded": 0,
+            "mushroom_paid": 20,
+            "net_chips": -24,
+            "player_id": "player-2"
+          }
+        ],
+        "received": "result"
+      },
+      "hand_id": "table-1:2",
+      "kind": "settlement_pending",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "36",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "cards": [
+          null,
+          null
+        ]
+      },
+      "hand_id": "table-1:2",
+      "kind": "hero_cards",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "37",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "cards": []
+      },
+      "hand_id": "table-1:2",
+      "kind": "board_updated",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "38",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "board": [],
+        "hero_cards": [
+          null,
+          null
+        ],
+        "history_complete": true,
+        "players": [
+          {
+            "player_id": "hero",
+            "seat": 1,
+            "stack": 800
+          },
+          {
+            "player_id": "player-1",
+            "seat": 2,
+            "stack": 800
+          },
+          {
+            "player_id": "player-2",
+            "seat": 3,
+            "stack": 800
+          }
+        ],
+        "rules_version": "wpk-observed-unverified-v1",
+        "street": "between_hands",
+        "turn": null
+      },
+      "hand_id": "table-1:2",
+      "kind": "snapshot",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "39",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "hand_number": 3,
+        "history_complete": true
+      },
+      "hand_id": "table-1:3",
+      "kind": "hand_started",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "40",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "cards": [
+          "As",
+          "Kd"
+        ]
+      },
+      "hand_id": "table-1:3",
+      "kind": "hero_cards",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "41",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "board": [],
+        "hero_cards": [
+          "As",
+          "Kd"
+        ],
+        "history_complete": true,
+        "players": [
+          {
+            "player_id": "hero",
+            "seat": 1,
+            "stack": 800
+          },
+          {
+            "player_id": "player-1",
+            "seat": 2,
+            "stack": 800
+          },
+          {
+            "player_id": "player-2",
+            "seat": 3,
+            "stack": 800
+          }
+        ],
+        "rules_version": "wpk-observed-unverified-v1",
+        "street": "preflop",
+        "turn": null
+      },
+      "hand_id": "table-1:3",
+      "kind": "snapshot",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "42",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "players": [
+          {
+            "mushroom_awarded": null,
+            "mushroom_paid": 20,
+            "net_chips": 16,
+            "player_id": "hero"
+          },
+          {
+            "mushroom_awarded": null,
+            "mushroom_paid": 20,
+            "net_chips": -52,
+            "player_id": "player-1"
+          },
+          {
+            "mushroom_awarded": null,
+            "mushroom_paid": 20,
+            "net_chips": -24,
+            "player_id": "player-2"
+          }
+        ],
+        "received": "log"
+      },
+      "hand_id": "table-1:2",
+      "kind": "settlement_pending",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "43",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "board": [
+          "7s",
+          "9h",
+          "3d",
+          "Js",
+          "Qd"
+        ],
+        "hand_number": 2,
+        "hero_cards": [
+          "5h",
+          "Th"
+        ],
+        "players": [
+          {
+            "mushroom_awarded": 0,
+            "mushroom_paid": 20,
+            "net_chips": 16,
+            "player_id": "hero"
+          },
+          {
+            "mushroom_awarded": 0,
+            "mushroom_paid": 20,
+            "net_chips": -52,
+            "player_id": "player-1"
+          },
+          {
+            "mushroom_awarded": 0,
+            "mushroom_paid": 20,
+            "net_chips": -24,
+            "player_id": "player-2"
+          }
+        ],
+        "pool_change": 60,
+        "reason": null,
+        "status": "reconciled",
+        "table_id": "table-1"
+      },
+      "hand_id": "table-1:2",
+      "kind": "settlement",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "44",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "reconciled": false
+      },
+      "hand_id": "table-1:3",
+      "kind": "room_closed",
+      "table_id": "table-1"
+    },
+    {
+      "schema": "tgto.capture/0.1",
+      "type": "business_event",
+      "adapter_version": "wpk/1",
+      "source_id": "synthetic-wpk",
+      "sequence": "45",
+      "captured_at": "2026-11-01T00:00:00Z",
+      "data": {
+        "board": [],
+        "hero_cards": [
+          "As",
+          "Kd"
+        ],
+        "history_complete": false,
+        "players": [
+          {
+            "player_id": "hero",
+            "seat": 1,
+            "stack": 800
+          },
+          {
+            "player_id": "player-1",
+            "seat": 2,
+            "stack": 800
+          },
+          {
+            "player_id": "player-2",
+            "seat": 3,
+            "stack": 800
+          }
+        ],
+        "rules_version": "wpk-observed-unverified-v1",
+        "street": "preflop",
+        "turn": null
+      },
+      "hand_id": "table-1:3",
+      "kind": "snapshot",
+      "table_id": "table-1"
+    }
+  ],
+  "expected": {
+    "actions": [],
+    "board": [],
+    "closed": true,
+    "hand_number": 3,
+    "hero_cards": [
+      "As",
+      "Kd"
+    ],
+    "history_complete": false,
+    "logs": [],
+    "observed": [
+      {
+        "board": [],
+        "hand_number": 1,
+        "hero_cards": [
+          "5h",
+          "Th"
+        ],
+        "table_id": "table-1"
+      },
+      {
+        "board": [
+          "7s",
+          "9h",
+          "3d",
+          "Js",
+          "Qd"
+        ],
+        "hand_number": 2,
+        "hero_cards": [
+          "5h",
+          "Th"
+        ],
+        "table_id": "table-1"
+      },
+      {
+        "board": [],
+        "hand_number": 3,
+        "hero_cards": [
+          "As",
+          "Kd"
+        ],
+        "table_id": "table-1"
+      }
+    ],
+    "pending": false,
+    "pending_actions": [],
+    "players": [
+      {
+        "player_id": "hero",
+        "seat": 1,
+        "stack": 800
+      },
+      {
+        "player_id": "player-1",
+        "seat": 2,
+        "stack": 800
+      },
+      {
+        "player_id": "player-2",
+        "seat": 3,
+        "stack": 800
+      }
+    ],
+    "results": [],
+    "saw_start": false,
+    "seen_deal": true,
+    "settlements": [
+      {
+        "board": [
+          "7s",
+          "9h",
+          "3d",
+          "Js",
+          "Qd"
+        ],
+        "hand_number": 2,
+        "hero_cards": [
+          "5h",
+          "Th"
+        ],
+        "players": [
+          {
+            "mushroom_awarded": 0,
+            "mushroom_paid": 20,
+            "net_chips": 16,
+            "player_id": "hero"
+          },
+          {
+            "mushroom_awarded": 0,
+            "mushroom_paid": 20,
+            "net_chips": -52,
+            "player_id": "player-1"
+          },
+          {
+            "mushroom_awarded": 0,
+            "mushroom_paid": 20,
+            "net_chips": -24,
+            "player_id": "player-2"
+          }
+        ],
+        "pool_change": 60,
+        "reason": null,
+        "status": "reconciled",
+        "table_id": "table-1"
+      }
+    ],
+    "street": "preflop",
+    "table_id": "table-1",
+    "turn": null
+  }
+}

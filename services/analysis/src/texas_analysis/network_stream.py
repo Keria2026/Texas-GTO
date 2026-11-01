@@ -1,4 +1,4 @@
-"""TGTO network metadata ingestion. This stream never constructs a poker hand."""
+"""Durable TGTO network/business receipts and observed (never simulated) hand state."""
 
 import asyncio
 import hmac
@@ -14,6 +14,19 @@ from urllib.parse import urlsplit
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 from starlette.concurrency import run_in_threadpool
+
+from .capture_contract import (
+    CAPABILITY as BUSINESS_CAPABILITY,
+)
+from .capture_contract import (
+    SCHEMA as BUSINESS_SCHEMA,
+)
+from .capture_contract import (
+    STATE_CAPABILITY,
+    BusinessBatch,
+)
+from .capture_state import reduce_event
+from .capture_state import response as capture_response
 
 SCHEMA = "tgto.network/0.1"
 STATUS_SCHEMA = "tgto.network-status/0.1"
@@ -121,7 +134,9 @@ class NetworkBatch(StrictModel):
 class StreamAuth(StrictModel):
     type: Literal["auth"]
     token: Annotated[str, Field(min_length=1, max_length=4096)]
-    capabilities: Annotated[list[Literal["network_status_v1"]], Field(max_length=1)] = []
+    capabilities: Annotated[
+        list[Literal["network_status_v1", "capture_state_v1"]], Field(max_length=2)
+    ] = []
 
 
 class NetworkStore:
@@ -131,40 +146,60 @@ class NetworkStore:
     ACKs cover only the submitted batch, never a later persisted head.
     """
 
-    def __init__(self, path: Path, *, max_bytes=256 * 1024 * 1024, max_sources=256):
+    def __init__(
+        self, path: Path, *, max_bytes=256 * 1024 * 1024, max_sources=256, stream="network"
+    ):
+        if stream not in ("network", "capture"):
+            raise ValueError("Unknown stream")
+        self.stream = stream
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch(mode=0o600, exist_ok=True)
         path.chmod(0o600)
         self.path, self.max_bytes, self.max_sources = path, max_bytes, max_sources
         with closing(self.connect()) as db:
-            db.executescript("""
+            db.executescript(f"""
                 PRAGMA journal_mode=WAL;
-                CREATE TABLE IF NOT EXISTS network_events (
+                CREATE TABLE IF NOT EXISTS {self.stream}_events (
                     origin TEXT NOT NULL, source TEXT NOT NULL, sequence TEXT NOT NULL,
                     body TEXT NOT NULL, PRIMARY KEY(origin,source,sequence));
-                CREATE TABLE IF NOT EXISTS network_heads (
+                CREATE TABLE IF NOT EXISTS {self.stream}_heads (
                     origin TEXT NOT NULL, source TEXT NOT NULL, sequence TEXT NOT NULL,
                     bytes INTEGER NOT NULL, PRIMARY KEY(origin,source));
             """)
+            if stream == "capture":
+                db.execute(
+                    "CREATE TABLE IF NOT EXISTS capture_state (origin TEXT NOT NULL, "
+                    "source TEXT NOT NULL, sequence TEXT NOT NULL, body TEXT NOT NULL, "
+                    "PRIMARY KEY(origin,source))"
+                )
 
     def connect(self):
         db = sqlite3.connect(self.path, timeout=5)
         db.execute("PRAGMA synchronous=FULL")
         return db
 
-    def append(self, origin: str, batch: NetworkBatch) -> str:
+    def append(self, origin: str, batch: NetworkBatch | BusinessBatch) -> str:
         with closing(self.connect()) as db, db:
+            if (self.stream == "capture") != isinstance(batch, BusinessBatch):
+                raise ValueError("Store stream mismatch")
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
-                "SELECT sequence,bytes FROM network_heads WHERE origin=? AND source=?",
+                f"SELECT sequence,bytes FROM {self.stream}_heads WHERE origin=? AND source=?",
                 (origin, batch.source_id),
             ).fetchone()
             last, size = (int(row[0]), row[1]) if row else (0, 0)
             total, sources = db.execute(
-                "SELECT COALESCE(SUM(bytes),0),COUNT(*) FROM network_heads"
+                f"SELECT COALESCE(SUM(bytes),0),COUNT(*) FROM {self.stream}_heads"
             ).fetchone()
             if row is None and sources >= self.max_sources:
                 raise ValueError("Capture source quota exceeded")
+            projection = None
+            if self.stream == "capture":
+                stored = db.execute(
+                    "SELECT body FROM capture_state WHERE origin=? AND source=?",
+                    (origin, batch.source_id),
+                ).fetchone()
+                projection = json.loads(stored[0]) if stored else None
             for event in batch.events:
                 body = json.dumps(
                     event.model_dump(exclude_unset=True, by_alias=True),
@@ -175,7 +210,8 @@ class NetworkStore:
                 )
                 key = (origin, batch.source_id, event.sequence.zfill(20))
                 old = db.execute(
-                    "SELECT body FROM network_events WHERE origin=? AND source=? AND sequence=?",
+                    f"SELECT body FROM {self.stream}_events "
+                    "WHERE origin=? AND source=? AND sequence=?",
                     key,
                 ).fetchone()
                 if old:
@@ -189,14 +225,35 @@ class NetworkStore:
                 total += cost
                 if size > 64 * 1024 * 1024 or total > self.max_bytes:
                     raise ValueError("Capture storage quota exceeded")
-                db.execute("INSERT INTO network_events VALUES(?,?,?,?)", (*key, body))
+                db.execute(f"INSERT INTO {self.stream}_events VALUES(?,?,?,?)", (*key, body))
+                if self.stream == "capture":
+                    projection = reduce_event(projection, event)
                 last += 1
             db.execute(
-                "INSERT INTO network_heads VALUES(?,?,?,?) ON CONFLICT(origin,source) "
+                f"INSERT INTO {self.stream}_heads VALUES(?,?,?,?) ON CONFLICT(origin,source) "
                 "DO UPDATE SET sequence=excluded.sequence,bytes=excluded.bytes",
                 (origin, batch.source_id, str(last), size),
             )
+            if self.stream == "capture":
+                db.execute(
+                    "INSERT INTO capture_state VALUES(?,?,?,?) ON CONFLICT(origin,source) "
+                    "DO UPDATE SET sequence=excluded.sequence,body=excluded.body",
+                    (
+                        origin,
+                        batch.source_id,
+                        str(last),
+                        json.dumps(projection, separators=(",", ":")),
+                    ),
+                )
         return batch.events[-1].sequence
+
+    def state(self, origin: str, source: str):
+        with closing(self.connect()) as db:
+            row = db.execute(
+                "SELECT sequence,body FROM capture_state WHERE origin=? AND source=?",
+                (origin, source),
+            ).fetchone()
+        return capture_response(source, row[0], json.loads(row[1])) if row else None
 
 
 def blocked_status(source: str, through: str) -> dict:
@@ -225,7 +282,7 @@ async def receive_json(ws: WebSocket, timeout: float) -> dict:
     return value
 
 
-async def network_stream(ws: WebSocket, *, origins, token: str, get_store):
+async def network_stream(ws: WebSocket, *, origins, token: str, get_store, get_capture_store):
     origin = ws.headers.get("origin", "")
     if origin not in origins or not re.fullmatch(r"chrome-extension://[a-p]{32}", origin):
         await ws.close(code=4403)
@@ -240,14 +297,36 @@ async def network_stream(ws: WebSocket, *, origins, token: str, get_store):
             {
                 "type": "ready",
                 "schema_version": "1.2",
-                "capabilities": [CAPABILITY, STATUS_CAPABILITY],
+                "capabilities": [
+                    CAPABILITY,
+                    STATUS_CAPABILITY,
+                    BUSINESS_CAPABILITY,
+                    STATE_CAPABILITY,
+                ],
             }
         )
         store = await run_in_threadpool(get_store)
+        capture_store = await run_in_threadpool(get_capture_store)
         while True:
             message = await receive_json(ws, 60)
             if message == {"type": "ping"}:
                 await ws.send_json({"type": "pong"})
+                continue
+            if message.get("type") == "capture.append":
+                batch = BusinessBatch.model_validate(message)
+                through = await run_in_threadpool(capture_store.append, origin, batch)
+                await ws.send_json(
+                    {
+                        "schema": BUSINESS_SCHEMA,
+                        "type": "capture.ack",
+                        "source_id": batch.source_id,
+                        "through_sequence": through,
+                    }
+                )
+                if STATE_CAPABILITY in auth.capabilities:
+                    state = await run_in_threadpool(capture_store.state, origin, batch.source_id)
+                    if state and state["through_sequence"] == through:
+                        await ws.send_json(state)
                 continue
             batch = NetworkBatch.model_validate(message)
             through = await run_in_threadpool(store.append, origin, batch)

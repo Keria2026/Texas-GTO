@@ -131,9 +131,17 @@ def create_app(
 
     def get_network_store():
         with resource_lock:
-            if not capture_resources:
+            if "store" not in capture_resources:
                 capture_resources["store"] = NetworkStore(directory / "capture.sqlite3")
         return capture_resources["store"]
+
+    def get_capture_store():
+        with resource_lock:
+            if "business" not in capture_resources:
+                capture_resources["business"] = NetworkStore(
+                    directory / "capture.sqlite3", stream="capture"
+                )
+        return capture_resources["business"]
 
     @asynccontextmanager
     async def lifespan(app):
@@ -176,7 +184,13 @@ def create_app(
 
     @app.websocket("/v1/research/stream")
     async def capture_stream(ws: WebSocket):
-        await network_stream(ws, origins=allowed_origins, token=token, get_store=get_network_store)
+        await network_stream(
+            ws,
+            origins=allowed_origins,
+            token=token,
+            get_store=get_network_store,
+            get_capture_store=get_capture_store,
+        )
 
     @app.get("/v1/health", response_model=HealthResponse)
     def health():

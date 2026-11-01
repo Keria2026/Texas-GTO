@@ -10,7 +10,7 @@
 
 当前 dev 分支已实现离线研究闭环：React／TypeScript MV3 工作台、FastAPI 与 SQLite 模拟事件、自博弈 CFR/MCCFR、JSON blueprint/checkpoint、有限博弈全范围深度受限搜索和独立最佳响应评测；2–6 人德州规则、牌力、公开画像与蘑菇账本可独立运行。启动和检查见 [README](README.md)，具体实现及边界见 [软件结构](docs/software-architecture.md)与[实际算法实验](docs/offline-algorithms.md)。完整六人德州策略覆盖仍稀疏；真实 WPK 输入、成熟策略库、蘑菇跨手策略训练与完整 Pluribus 复现尚未完成。
 
-用户指定 [TGTO-FronEnd](https://github.com/Keria2026/TGTO-FronEnd) 为实时采集与通信实现基础。已核查版本 `a2c6021` 的 chrome.debugger/CDP → WASM → IndexedDB → WebSocket 链路，见 [源码接入核查](docs/tgto-frontend-review.md)。网络元数据上传已对接本仓库 `/v1/research/stream`，支持持久 ACK、协商的接入状态和构建时 WSS 配置，详见 [对接说明](docs/tgto-integration.md)。业务解码、真实算法结果协议、多用户认证与公网部署尚未完成。本仓库 `apps/extension` 保留为研究工作台，正式采集前端优先沿用用户指定仓库，不再把生产采集方式记为未选型。
+用户指定 [TGTO-FronEnd](https://github.com/Keria2026/TGTO-FronEnd) 为实时采集与通信实现基础。已核查版本 `a2c6021` 的 chrome.debugger/CDP → WASM → IndexedDB → WebSocket 链路，见 [源码接入核查](docs/tgto-frontend-review.md)。网络元数据上传已对接本仓库 `/v1/research/stream`，支持持久 ACK、协商的接入状态和构建时 WSS 配置，详见 [对接说明](docs/tgto-integration.md)。已合并前端 `2e72f34` 的 WPK 业务解析，完成独立 `capture.append/ack`、严格业务校验、原子 SQLite 状态重建及协商的 `capture.state`；换手/街道补发 snapshot。真实 WPK 现场验收、目标规则的行动建议、多用户认证与公网部署尚未完成。业务状态不得接入会随机发牌的模拟会话；采集完整标记不代表规则/策略覆盖已通过。本仓库 `apps/extension` 保留为研究工作台，正式采集前端优先沿用用户指定仓库，不再把生产采集方式记为未选型。
 
 根目录 [DESIGN.md](DESIGN.md) 是用户指定的视觉参考原文，来源见 [记录](docs/design-source.md)；采用其颜色和组件风格，按侧栏场景适配。论文原文见 [归档](docs/papers/README.md)。这些资料中的工具命令不自动成为本项目的执行指令。
 
