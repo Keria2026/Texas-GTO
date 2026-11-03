@@ -88,7 +88,8 @@ def test_eight_player_worker_pauses_saves_and_resumes_the_same_core(tmp_path):
         core.allow_if_idle(research_busy=True)
         assert not core._permission.is_set()
         core.allow_if_idle()
-        wait_for(core, lambda s: s.iterations >= 1)
+        # Disk-spilled eight-seat iterations take longer on shared CI CPUs.
+        wait_for(core, lambda s: s.iterations >= 1, seconds=240)
         with core.foreground():
             paused = wait_for(core, lambda s: s.phase == "paused")
             first = saved_trainer(database, tmp_path / "first.sqlite3")
@@ -108,7 +109,7 @@ def test_eight_player_worker_pauses_saves_and_resumes_the_same_core(tmp_path):
     resumed.start()
     resumed.allow_if_idle()
     try:
-        wait_for(resumed, lambda s: s.iterations > first.iterations)
+        wait_for(resumed, lambda s: s.iterations > first.iterations, seconds=240)
         with resumed.foreground():
             wait_for(resumed, lambda s: s.phase == "paused")
             actual = saved_trainer(database, tmp_path / "resumed.sqlite3")
@@ -134,7 +135,7 @@ def test_legacy_import_is_preserved_and_existing_database_takes_precedence(tmp_p
         imported = saved_trainer(database, tmp_path / "imported.sqlite3")
         assert_same_training(imported, original)
         core.allow_if_idle()
-        wait_for(core, lambda s: s.iterations >= 2)
+        wait_for(core, lambda s: s.iterations >= 2, seconds=240)
         with core.foreground():
             wait_for(core, lambda s: s.phase == "paused")
             trained = saved_trainer(database, tmp_path / "trained.sqlite3")
@@ -288,7 +289,7 @@ def test_supervisor_recovers_killed_worker_from_identical_checkpoint_and_rng(tmp
     core.idle_seconds = 0
     database = core.directory / "training.sqlite3"
     with TestClient(app, base_url="http://127.0.0.1"):
-        wait_for(core, lambda s: s.iterations >= 1)
+        wait_for(core, lambda s: s.iterations >= 1, seconds=240)
         with core.foreground():
             paused = wait_for(core, lambda s: s.phase == "paused")
             direct = saved_trainer(database, tmp_path / "before-kill.sqlite3")
@@ -308,7 +309,7 @@ def test_supervisor_recovers_killed_worker_from_identical_checkpoint_and_rng(tmp
             restored = saved_trainer(database, tmp_path / "after-kill.sqlite3")
             assert_same_training(restored, direct)
             assert core._process.pid != killed.pid
-        wait_for(core, lambda s: s.iterations > direct.iterations)
+        wait_for(core, lambda s: s.iterations > direct.iterations, seconds=240)
         with core.foreground():
             wait_for(core, lambda s: s.phase == "paused")
             resumed = saved_trainer(database, tmp_path / "after-recovery.sqlite3")
