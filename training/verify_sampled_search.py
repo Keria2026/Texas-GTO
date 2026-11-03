@@ -38,7 +38,8 @@ def verify():
         max_rollout_nodes=1_000_000,
     )
     small_search = small.to_dict()
-    checked = evaluate_strategy(small.subgame, small.policy, max_nodes=100_000)
+    checked = evaluate_strategy(small.subgame, small.average_policy, max_nodes=100_000)
+    current_checked = evaluate_strategy(small.subgame, small.policy, max_nodes=100_000)
     assert small.blueprint_fallback_queries == 0 and checked.exploitability < 0.05
     assert abs(checked.policy_values[0] + 1 / 18) < 0.03
 
@@ -105,7 +106,8 @@ def verify():
         "kuhn": {
             "blueprint": {"algorithm": "pluribus", "iterations": 3000, "seed": 42},
             "search": small_search,
-            "independent_exact_subgame_evaluation": checked.to_dict(),
+            "independent_exact_average_policy_evaluation": checked.to_dict(),
+            "independent_exact_current_policy_evaluation": current_checked.to_dict(),
         },
         "eight_player_mushroom": {
             "initial_stacks": [800] * 8,

@@ -72,6 +72,7 @@ test('new local action, expiry, stop, lost history or changed turn immediately h
 test('search provenance requires bounded completed work and explicit fallback diagnostics', () => {
   const searched = ready();
   searched.reason = 'searched_strategy'; searched.model.source = 'pluribus_search';
+  searched.warnings.push('latest_completed_search_policy');
   searched.model.search = { status: 'complete', iterations: 20, nodes: 2000, rollout_nodes: 1000, root_draws: 160, elapsed_ms: 800, stop_reason: 'iterations' };
   assert.equal(parseRecommendation(searched).model?.source, 'pluribus_search');
   for (const change of [

@@ -1,0 +1,173 @@
+{
+  "created_at": "2026-11-03T06:10:12.728091+00:00",
+  "python": "3.12.3",
+  "source_sha256": {
+    "engines/strategy/src/texas_strategy/search.py": "7b8d65fa668fe5e907c40d0f082ab08b0d99976e7690fabc83d061b87fcf1c77",
+    "engines/strategy/src/texas_strategy/cfr.py": "73fddce348a5fc205899f61812aa676057b3d2d0573c1ab57a6f08fe7f945de1",
+    "engines/strategy/src/texas_strategy/pluribus.py": "3a8f5fa9b2ca2737112fd1deecddcc8889a79db436c18ffa88dcf0ee56e9affe",
+    "packages/game-core/src/texas_game_core/holdem.py": "11667c8b47944e5b15363002ea78fc119f58414409c8d93c44b303363a60ff99",
+    "packages/game-core/src/texas_game_core/mushroom_game.py": "9e939aa5fea49b824ef1421938480c8b4c6e9af232dd22938260e110d58fbfa4",
+    "training/verify_sampled_search.py": "8485ab460586925b926f1f137de394fd295f24ccecbde390e83f34722a909693"
+  },
+  "scope": "Offline engine verification; no live WPK data or strategy-strength claim",
+  "kuhn": {
+    "blueprint": {
+      "algorithm": "pluribus",
+      "iterations": 3000,
+      "seed": 42
+    },
+    "search": {
+      "player": 0,
+      "information_key": "kuhn-2p-v1|play||player:0|card:2",
+      "actions": [
+        "check",
+        "bet"
+      ],
+      "probabilities": [
+        0.0,
+        1.0
+      ],
+      "action_policy": "latest_committed_regret_matching",
+      "average_policy": "iteration_weighted",
+      "root_worlds": 6,
+      "root_reach_probability": 1.0,
+      "root_source": "blueprint_public_reach",
+      "public_root_nodes": 7,
+      "rollout_nodes": 46405,
+      "rollout_cache_entries": 0,
+      "rollout_samples": 36000,
+      "continuation_evaluation": "sampled_trajectories",
+      "depth_limit": 1,
+      "continuation_multiplier": 4.0,
+      "continuations": [
+        "blueprint",
+        "fold",
+        "call",
+        "raise"
+      ],
+      "blueprint_fallback_queries": 0,
+      "diagnostics": {
+        "completed_iterations": 3000,
+        "total_iterations": 3000,
+        "nodes": 130405,
+        "elapsed_seconds": 5.210443992000364,
+        "stop_reason": "iterations",
+        "information_sets": 15
+      },
+      "elapsed_seconds": 5.210788315001992,
+      "quality": "conditional_approximate_search",
+      "warnings": [
+        "Finite continuation set and local re-solving do not guarantee a safe global equilibrium.",
+        "Continuation biases preserve blueprint support and cannot revive absent actions.",
+        "The latest committed strategy can be more exploitable than the iteration average.",
+        "Continuation values are sampled, with no convergence or error-bound certificate."
+      ]
+    },
+    "independent_exact_average_policy_evaluation": {
+      "policy_values": [
+        -0.05452926346291925,
+        0.05452926346291925
+      ],
+      "best_response_values": [
+        -0.03942180356092906,
+        0.05877166346548429
+      ],
+      "nash_conv": 0.019349859904555233,
+      "exploitability": 0.009674929952277617,
+      "is_zero_sum": true,
+      "nodes": 691,
+      "quality": "exact_finite_game"
+    },
+    "independent_exact_current_policy_evaluation": {
+      "policy_values": [
+        -0.10437951715351199,
+        0.10437951715351199
+      ],
+      "best_response_values": [
+        0.030831354909672988,
+        0.13941566612700043
+      ],
+      "nash_conv": 0.1702470210366734,
+      "exploitability": 0.0851235105183367,
+      "is_zero_sum": true,
+      "nodes": 691,
+      "quality": "exact_finite_game"
+    }
+  },
+  "eight_player_mushroom": {
+    "initial_stacks": [
+      800,
+      800,
+      800,
+      800,
+      800,
+      800,
+      800,
+      800
+    ],
+    "horizon": 2,
+    "root": "Eight synthetic hidden worlds, not a certified full public belief",
+    "continuation": "Synthetic uniform policy, not a trained or deployable blueprint",
+    "search": {
+      "player": 4,
+      "information_key": "[4,[],[\"4c\",\"6s\"],\"584adf12df75d7ad3406103fc53c4d99358dde724712954ae926dda6c7a7c309\"]",
+      "actions": [
+        "fold",
+        "call",
+        "raise_to:16",
+        "raise_to:19",
+        "raise_to:30",
+        "raise_to:780"
+      ],
+      "probabilities": [
+        0.9950431167259772,
+        0.0,
+        0.0,
+        0.004956883274022718,
+        0.0,
+        0.0
+      ],
+      "action_policy": "latest_committed_regret_matching",
+      "average_policy": "iteration_weighted",
+      "root_worlds": 8,
+      "root_reach_probability": 1,
+      "root_source": "caller_supplied_public_belief",
+      "public_root_nodes": 0,
+      "rollout_nodes": 57757,
+      "rollout_cache_entries": 0,
+      "rollout_samples": 1568,
+      "continuation_evaluation": "sampled_trajectories",
+      "depth_limit": 1,
+      "continuation_multiplier": 4.0,
+      "continuations": [
+        "blueprint",
+        "fold",
+        "call",
+        "raise"
+      ],
+      "blueprint_fallback_queries": 0,
+      "diagnostics": {
+        "completed_iterations": 32,
+        "total_iterations": 32,
+        "nodes": 66861,
+        "elapsed_seconds": 10.096259794001526,
+        "stop_reason": "iterations",
+        "information_sets": 180
+      },
+      "elapsed_seconds": 10.09818900100072,
+      "quality": "conditional_approximate_search",
+      "warnings": [
+        "Finite continuation set and local re-solving do not guarantee a safe global equilibrium.",
+        "Continuation biases preserve blueprint support and cannot revive absent actions.",
+        "The latest committed strategy can be more exploitable than the iteration average.",
+        "Continuation values are sampled, with no convergence or error-bound certificate.",
+        "Caller-supplied public belief coverage and provenance have not been certified."
+      ]
+    },
+    "exact_tail_reference_10000_node_limit": {
+      "status": "budget_exceeded",
+      "reason": "evaluation node budget exceeded; no exact result available",
+      "elapsed_seconds": 2.708108958999219
+    }
+  }
+}

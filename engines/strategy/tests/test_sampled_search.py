@@ -224,7 +224,7 @@ def test_pluribus_blueprint_to_sampled_search_can_be_evaluated_independently():
         max_nodes=1_000_000,
         max_rollout_nodes=1_000_000,
     )
-    report = evaluate_strategy(result.subgame, result.policy, max_nodes=100_000)
+    report = evaluate_strategy(result.subgame, result.average_policy, max_nodes=100_000)
     assert result.blueprint_fallback_queries == 0
     assert report.policy_values == pytest.approx((-1 / 18, 1 / 18), abs=0.03)
     assert report.exploitability < 0.05

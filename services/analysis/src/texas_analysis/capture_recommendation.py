@@ -291,7 +291,7 @@ def recommend(
                 "client_raise_bounds_not_interpreted",
             ]
             + (
-                ["local_search_not_equilibrium_certified"]
+                ["local_search_not_equilibrium_certified", "latest_completed_search_policy"]
                 if strategy_source == "pluribus_search"
                 else []
             ),

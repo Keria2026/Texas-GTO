@@ -589,12 +589,15 @@ class DepthLimitedGame:
 
 @dataclass(frozen=True)
 class SearchResult:
+    """Current policy for play; the separate average is retained for belief calculations."""
+
     player: int
     information_key: str
     actions: tuple[str, ...]
     probabilities: tuple[float, ...]
     root_distribution: RootDistribution | SampledRoot
     policy: Any
+    average_policy: Any
     subgame: DepthLimitedGame
     diagnostics: TrainingDiagnostics
     elapsed_seconds: float
@@ -603,6 +606,7 @@ class SearchResult:
     warnings: tuple[str, ...] = (
         "Finite continuation set and local re-solving do not guarantee a safe global equilibrium.",
         "Continuation biases preserve blueprint support and cannot revive absent actions.",
+        "The latest committed strategy can be more exploitable than the iteration average.",
     )
 
     @property
@@ -618,6 +622,8 @@ class SearchResult:
             "information_key": self.information_key,
             "actions": list(self.actions),
             "probabilities": list(self.probabilities),
+            "action_policy": "latest_committed_regret_matching",
+            "average_policy": "iteration_weighted",
             "root_worlds": self.root_worlds,
             "root_reach_probability": None
             if generated
@@ -889,10 +895,14 @@ def _train_search(
     check_search()
     if diagnostics.completed_iterations == 0:
         raise EvaluationLimitError("search budget allowed no complete training iteration")
-    policy = trainer.average_policy(missing="error", check=clock.check_time)
-    entry = policy.lookup(player, subgame.root_information_key(requested_info))
-    if entry is None:
+    average_policy = trainer.average_policy(missing="error", check=clock.check_time)
+    key = player, subgame.root_information_key(requested_info)
+    if average_policy.lookup(*key) is None:
         raise SearchCoverageError("search did not train the requested private information set")
+    policy = trainer.current_policy(missing="error", check=clock.check_time)
+    entry = policy.lookup(*key)
+    if entry is None:
+        raise SearchCoverageError("search lacks a committed current strategy for the target")
     if representative is None:
         actions, probabilities = entry.actions, entry.probabilities
     else:
@@ -906,6 +916,7 @@ def _train_search(
         probabilities,
         subgame.root_distribution,
         policy,
+        average_policy,
         subgame,
         diagnostics,
         time.monotonic() - clock.started,

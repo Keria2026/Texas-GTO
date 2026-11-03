@@ -89,7 +89,7 @@ test('recommendation sidebar shows raise total and payment, then clears on inval
     await page.addInitScript(() => {
       window.recommendationTestStatus = { sessions: [], tabs: [], transportState: 'ready', backendURL: 'ws://127.0.0.1:8765/v1/research/stream',
         wasm: 'ready', recent: [], businessStatus: 'ready', businessPending: '0', businessRecent: [], backendCapabilities: ['capture_recommendations_v1'],
-        recommendation: { status: 'ready', hand_id: 'table-1:2', selected_action: 0, expires_at_ms: Date.now() + 10000,
+        recommendation: { status: 'ready', hand_id: 'table-1:2', selected_action: 0, expires_at_ms: Date.now() + 10000, warnings: [],
           actions: [{ action: 'RAISE', label: 'raise_min', amount_delta: 22, raise_to: 24, probability: 1 }],
           model: { iterations: 5, version: 'synthetic-ui-only' } } };
       window.chrome = { runtime: { id: 'synthetic-ui', onMessage: {
@@ -119,10 +119,12 @@ test('recommendation sidebar shows raise total and payment, then clears on inval
       Object.assign(window.recommendationTestStatus.recommendation.model, {
         source: 'pluribus_search', search: { status: 'complete', iterations: 12, elapsed_ms: 900 },
       });
+      window.recommendationTestStatus.recommendation.warnings.push('latest_completed_search_policy');
       window.recommendationChanged({ type: 'state_changed' }, { id: 'synthetic-ui' });
     });
     await section.getByText(/Pluribus 限时搜索/).waitFor();
     await section.getByText(/本次搜索完成 12 轮/).waitFor();
+    await section.getByText('行动策略：最新完整迭代，尚未验证收敛。', { exact: true }).waitFor();
     await page.evaluate(() => {
       Object.assign(window.recommendationTestStatus.recommendation.model, {
         source: 'pluribus_blueprint', search: { status: 'coverage_missing', elapsed_ms: 70 },
@@ -130,6 +132,7 @@ test('recommendation sidebar shows raise total and payment, then clears on inval
       window.recommendationChanged({ type: 'state_changed' }, { id: 'synthetic-ui' });
     });
     await section.getByText('后续策略覆盖不足，本次使用已训练的当前节点策略。', { exact: true }).waitFor();
+    assert.equal(await section.getByText('行动策略：最新完整迭代，尚未验证收敛。', { exact: true }).count(), 0);
     await page.evaluate(() => { window.holdNextStatus = true; });
     await page.getByRole('button', { name: '重新连接', exact: true }).click();
     await page.waitForFunction(() => typeof window.releaseStaleStatus === 'function');

@@ -147,6 +147,7 @@ def test_search_replaces_probabilities_and_releases_its_pinned_snapshot(tmp_path
     assert result["model"]["search"]["iterations"] == 10
     assert result["actions"][result["selected_action"]]["action"] == "CHECK"
     assert "local_search_not_equilibrium_certified" in result["warnings"]
+    assert "latest_completed_search_policy" in result["warnings"]
     with pytest.raises(ValueError, match="closed"):
         seen[0].policy.lookup(0, "closed")
 

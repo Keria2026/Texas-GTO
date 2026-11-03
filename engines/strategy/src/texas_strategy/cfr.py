@@ -211,6 +211,23 @@ class Trainer:
             check()
         return result
 
+    def current_policy(
+        self,
+        *,
+        missing: Literal["uniform", "error"] = "error",
+        check: Callable[[], None] | None = None,
+    ) -> TabularPolicy:
+        """Regret matching after the last committed iteration, not an average blueprint."""
+        entries = {}
+        for key, entry in self._table.items():
+            if check is not None:
+                check()
+            entries[key] = PolicyEntry(entry.actions, regret_matching(entry.regrets))
+        result = TabularPolicy(entries, missing=missing)
+        if check is not None:
+            check()
+        return result
+
     def train(
         self,
         iterations: int,

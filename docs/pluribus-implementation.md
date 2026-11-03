@@ -162,3 +162,11 @@ Kuhn 用独立最佳响应评测，并验证 blueprint 保存加载后进入全�
 ### 在线限时预算
 
 0.7.0 的翻后推荐通过额外能力协商接入上述公共根和多后续策略。搜索为策略转换预留最多 50 毫秒，训练软截止仅回滚未完成迭代；共同硬截止或外部取消仍使整个结果失效。保留下来的平均策略和 RNG 已与只训练同样完整轮数的对照逐项比对。该工程调度不改变遗憾更新，不使少量迭代获得收敛保证，也不补齐缺失 blueprint。协议、预算和当前缺口见[八人推荐](eight-player-recommendations.md)。
+
+### 搜索行动与平均策略分离
+
+0.7.2 增加 `Trainer.current_policy()`，从已提交遗憾计算策略；搜索 `policy`／`probabilities` 改为这份结果，`average_policy` 单独保留。导出支持共同期限和取消，仍要求目标信息集存在非空平均累计，不能用未访问条目补齐。搜索半轮回滚后的当前与平均结果分别对照同种子的完整迭代；核心 blueprint 仍使用平均值，无数据库迁移。
+
+此选择参考[作者补充材料第 22 页](https://noambrown.github.io/papers/19-Science-Superhuman_Supp.pdf)对行动与范围策略的区分。这里具体取最后提交后的 regret matching，不宣称恢复了作者未公开的逐行实现。前次搜索平均用于下一街 Bayes 更新仍未接线，当前请求继续使用固定 blueprint 构造公共根。
+
+复现 `.venv/bin/python training/verify_sampled_search.py`，记录见 [current-search-policy.json](experiments/current-search-policy.json)。Kuhn blueprint 为 3000 轮 Pluribus／种子 42，深度 1 的 sampled MCCFR 搜索为 3000 轮／种子 32。独立精确最佳响应测得当前策略可剥削度 0.0851，平均为 0.00967；当前策略更易被剥削，平均的收敛检查不能转用于当前输出。八席二选一的精确／抽样测试只证明输出使用正确分布；八人蘑菇实验仍使用明确的合成后续策略及 8 个隐藏世界，不能当作完整公共范围、真实覆盖或性能保证。

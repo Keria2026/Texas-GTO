@@ -171,9 +171,10 @@ def test_cancel_after_completed_iteration_discards_partial_iteration_and_returns
     assert interrupted._rng.getstate() == control._rng.getstate()
 
 
-def test_final_average_conversion_is_cancellable_between_entries(monkeypatch):
+@pytest.mark.parametrize("method", ["average_policy", "current_policy"])
+def test_final_policy_conversion_is_cancellable_between_entries(monkeypatch, method):
     cancelled, checks = False, 0
-    original = Trainer.average_policy
+    original = getattr(Trainer, method)
 
     def average(self, *, check, **kwargs):
         def stop():
@@ -184,7 +185,7 @@ def test_final_average_conversion_is_cancellable_between_entries(monkeypatch):
 
         return original(self, check=stop, **kwargs)
 
-    monkeypatch.setattr(Trainer, "average_policy", average)
+    monkeypatch.setattr(Trainer, method, average)
     game = KuhnPoker()
     with pytest.raises(CancellationError):
         solve_subgame(
@@ -245,7 +246,8 @@ def test_soft_training_deadline_keeps_complete_iterations_before_total_expiry(mo
     control.train(1)
     assert interrupted._table == control._table
     assert interrupted._rng.getstate() == control._rng.getstate()
-    assert result.policy.entries == control.average_policy().entries
+    assert result.policy.entries == control.current_policy().entries
+    assert result.average_policy.entries == control.average_policy().entries
 
 
 def test_root_and_training_share_the_total_deadline(monkeypatch, clock):

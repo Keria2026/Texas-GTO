@@ -139,12 +139,12 @@ def test_bias_families_map_kuhn_and_sized_holdem_actions_explicitly():
     assert ContinuationPolicy(UniformPolicy(), "raise").probabilities(game, state) == (0.2, 0.8)
 
 
-def test_complete_horizon_search_agrees_with_full_kuhn_equilibrium_value():
+def test_complete_horizon_search_average_agrees_with_full_kuhn_equilibrium_value():
     game = KuhnPoker()
     result = solve_subgame(
         game, game.replay((2, 0)), UniformPolicy(), depth_limit=3, iterations=600
     )
-    report = evaluate_strategy(result.subgame, result.policy)
+    report = evaluate_strategy(result.subgame, result.average_policy)
     assert report.policy_values == pytest.approx((-1 / 18, 1 / 18), abs=0.01)
     assert report.exploitability < 0.025
     assert result.root_worlds == 6
@@ -152,6 +152,55 @@ def test_complete_horizon_search_agrees_with_full_kuhn_equilibrium_value():
     assert result.quality == "conditional_approximate_search"
     assert sum(result.probabilities) == pytest.approx(1)
     assert result.actions == ("check", "bet")
+
+
+@pytest.mark.parametrize("algorithm", ["cfr", "mccfr"])
+def test_eight_player_search_plays_current_regrets_and_preserves_separate_average(algorithm):
+    class HiddenChoices:
+        num_players = 8
+
+        def initial_state(self):
+            return ()
+
+        def actor(self, state):
+            return len(state) if len(state) < self.num_players else None
+
+        def legal_actions(self, state):
+            return ("fold", "call")
+
+        def public_key(self, state):
+            return len(state)
+
+        def information_key(self, state, player):
+            return str(player)
+
+        def active_players(self, state):
+            return tuple(range(self.num_players))
+
+        def transition(self, state, action):
+            return (*state, action)
+
+        def terminal_payoffs(self, state):
+            # A known dominant action isolates strategy selection from poker strength.
+            scores = [int(action == "call") for action in state]
+            mean = sum(scores) / self.num_players
+            return tuple(score - mean for score in scores)
+
+    game = HiddenChoices()
+    result = solve_subgame(
+        game, (), UniformPolicy(), depth_limit=8, iterations=1, algorithm=algorithm, seed=23
+    )
+    assert result.diagnostics.completed_iterations == 1
+    assert result.probabilities == result.policy.probabilities(
+        result.subgame, result.subgame.wrap_state(())
+    )
+    assert result.probabilities == (0.0, 1.0)
+    assert len(result.policy.entries) == len(result.average_policy.entries) == 8
+    for key, entry in result.policy.entries.items():
+        assert entry.probabilities == (0.0, 1.0)
+        assert result.average_policy.lookup(*key).probabilities == (0.5, 0.5)
+    assert result.to_dict()["action_policy"] == "latest_committed_regret_matching"
+    assert result.to_dict()["average_policy"] == "iteration_weighted"
 
 
 def test_returned_action_only_depends_on_own_information_after_full_range_solve():

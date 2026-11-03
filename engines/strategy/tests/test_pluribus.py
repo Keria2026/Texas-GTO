@@ -273,7 +273,7 @@ def test_blueprint_to_full_range_search_pipeline(tmp_path):
     )
     assert result.root_worlds == 6
     assert result.blueprint_fallback_queries == 0
-    assert evaluate_strategy(result.subgame, result.policy).exploitability < 0.025
+    assert evaluate_strategy(result.subgame, result.average_policy).exploitability < 0.025
 
 
 def test_holdem_uses_exact_card_sampler_without_enumerating_chance_outcomes():
