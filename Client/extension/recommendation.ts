@@ -3,6 +3,10 @@ import type { Session } from './model.ts';
 import type { CaptureState } from './capture-state.ts';
 
 export const RECOMMENDATIONS_CAPABILITY = 'capture_recommendations_v1';
+export const SEARCH_CAPABILITY = 'capture_search_v1';
+export type SearchDiagnostics = { status: 'complete'; iterations: number; nodes: number;
+  rollout_nodes: number; root_draws: number; elapsed_ms: number; stop_reason: 'iterations' | 'node_budget' | 'deadline' }
+  | { status: 'coverage_missing' | 'budget'; elapsed_ms: number };
 export interface RecommendedAction {
   action: 'FOLD' | 'CHECK' | 'CALL' | 'BET' | 'RAISE' | 'ALL_IN';
   label: string; amount_delta: number; raise_to: number | null; probability: number;
@@ -12,8 +16,9 @@ export interface Recommendation {
   source_id: string; through_sequence: string; hand_id: string | null;
   status: 'ready' | 'unavailable'; reason: string; actions: RecommendedAction[];
   selected_action: number | null; issued_at_ms: number; expires_at_ms: number; elapsed_ms: number;
-  model: null | { source: 'pluribus_blueprint'; version: string; iterations: number;
-    rules_version: string; quality: 'finite_horizon_unvalidated'; horizon_hands: 2; opponent_adaptation: false };
+  model: null | { source: 'pluribus_blueprint' | 'pluribus_search'; version: string; iterations: number;
+    rules_version: string; quality: 'finite_horizon_unvalidated'; horizon_hands: 2; opponent_adaptation: false;
+    search?: SearchDiagnostics };
   warnings: string[];
 }
 function fields(value: any, keys: string[]): asserts value is Record<string, any> {
@@ -44,14 +49,29 @@ export function parseRecommendation(input: unknown): Recommendation {
       throw Error('Unavailable recommendation cannot carry actions');
   } else {
     if (!m.hand_id || !m.actions.length || !integer(m.selected_action) || m.selected_action >= m.actions.length
-      || m.expires_at_ms === m.issued_at_ms || m.reason !== 'covered_blueprint') throw Error('Invalid ready recommendation');
+      || m.expires_at_ms === m.issued_at_ms) throw Error('Invalid ready recommendation');
     const model = m.model;
-    fields(model, ['source', 'version', 'iterations', 'rules_version', 'quality', 'horizon_hands', 'opponent_adaptation']);
-    if (model.source !== 'pluribus_blueprint' || typeof model.version !== 'string' || !/^[a-f0-9]{64}$/.test(model.version)
+    fields(model, ['source', 'version', 'iterations', 'rules_version', 'quality', 'horizon_hands', 'opponent_adaptation',
+      ...(model && 'search' in model ? ['search'] : [])]);
+    if (!['pluribus_blueprint', 'pluribus_search'].includes(model.source) || typeof model.version !== 'string' || !/^[a-f0-9]{64}$/.test(model.version)
       || !integer(model.iterations) || model.iterations < 1 || typeof model.rules_version !== 'string'
       || !model.rules_version.startsWith('mushroom-context-v1:') || model.rules_version.length > 8192
       || model.quality !== 'finite_horizon_unvalidated' || model.horizon_hands !== 2 || model.opponent_adaptation !== false)
       throw Error('Invalid recommendation provenance');
+    if (m.reason !== (model.source === 'pluribus_search' ? 'searched_strategy' : 'covered_blueprint'))
+      throw Error('Invalid recommendation source');
+    if (model.search !== undefined) {
+      const s = model.search;
+      fields(s, ['status', 'elapsed_ms', ...(s?.status === 'complete' ? ['iterations', 'nodes', 'rollout_nodes', 'root_draws', 'stop_reason'] : [])]);
+      if (!['complete', 'coverage_missing', 'budget'].includes(s.status) || !integer(s.elapsed_ms))
+        throw Error('Invalid search diagnostics');
+      if (s.status === 'complete' && (![s.iterations, s.nodes, s.rollout_nodes, s.root_draws].every(integer)
+        || s.iterations < 1 || s.iterations > 100 || s.nodes > 30000 || s.rollout_nodes > 30000 || s.root_draws < 1
+        || !['iterations', 'node_budget', 'deadline'].includes(s.stop_reason)))
+        throw Error('Invalid search work bounds');
+    }
+    if ((model.source === 'pluribus_search') !== (model.search?.status === 'complete'))
+      throw Error('Search source requires completed search evidence');
     for (const a of m.actions) {
       fields(a, ['action', 'label', 'amount_delta', 'raise_to', 'probability']);
       if (!['FOLD', 'CHECK', 'CALL', 'BET', 'RAISE', 'ALL_IN'].includes(a.action)

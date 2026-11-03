@@ -92,7 +92,7 @@ WASM 在首次、换手及可见状态（含街道/历史完整性）变化时�
 
 额外协商 `capture_recommendations_v1`，只在双方声明后接收 `capture.recommendation`（schema `tgto.capture-recommendation/0.1`）。它与兼容旧客户端的 capture.state.analysis 分开；后者仍是观察诊断。
 
-消息绑定 source_id、hand_id、through_sequence。ready 携带实际动作、策略频率、本次支付 amount_delta、加注到的本街总额 raise_to、selected_action 和固定模型版本；unavailable 的动作必须为空。模型目前仅允许 pluribus_blueprint、两手视野、质量未认证、不使用画像调整。缺平均策略不作均匀补齐。
+消息绑定 source_id、hand_id、through_sequence。ready 携带实际动作、策略频率、本次支付 amount_delta、加注到的本街总额 raise_to、selected_action 和固定模型版本；unavailable 的动作必须为空。默认模型仅允许 pluribus_blueprint、两手视野、质量未认证、不使用画像调整。另行协商 capture_search_v1 后，翻后可返回 pluribus_search，reason 为 searched_strategy，并带 model.search；原基线可带未完成搜索诊断。complete 包含 iterations、nodes、rollout_nodes、root_draws、stop_reason（iterations/node_budget/deadline）、elapsed_ms；coverage_missing/budget 仅包含 status、elapsed_ms。未协商时不得发送这些扩展字段。缺平均策略不作均匀补齐。
 
 只有当前活动业务源、本地最后版本且已经 ACK、相同观察状态／手牌、轮到本人和未过期时才能展示。业务变化立即清除；断线清空，200 毫秒到期检查，最长有效 10 秒。插件只展示，不自动下注。字段及边界由 recommendation.ts 严格校验。
 

@@ -140,7 +140,7 @@ def batch(events):
 def fixture_model(path, events, *, average=True, ledger_resolver=None):
     """Insert an explicitly synthetic weighted policy to test transport, not strength."""
     state = observation(events)
-    game, _, query = prepare_query(state, events, ledger_resolver=ledger_resolver)
+    game, replay, query = prepare_query(state, events, ledger_resolver=ledger_resolver)
     trainer = open_trainer(game, path)
     try:
         trainer._store.begin(0)
@@ -151,7 +151,7 @@ def fixture_model(path, events, *, average=True, ledger_resolver=None):
                 [99.0] * len(query.actions),
                 list(range(1, len(query.actions) + 1)) if average else [0.0] * len(query.actions),
             ),
-            0,
+            replay.state.street,
         )
         trainer._store.commit(trainer, 1)
     finally:

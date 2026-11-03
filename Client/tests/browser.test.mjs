@@ -114,6 +114,22 @@ test('recommendation sidebar shows raise total and payment, then clears on inval
     const screenshot = resolve(process.env.TGTO_RECOMMENDATION_SCREENSHOT ?? '.impeccable/review/recommendation-synthetic.png');
     await mkdir(dirname(screenshot), { recursive: true });
     await section.screenshot({ path: screenshot });
+    await section.getByText('模型来源', { exact: true }).click();
+    await page.evaluate(() => {
+      Object.assign(window.recommendationTestStatus.recommendation.model, {
+        source: 'pluribus_search', search: { status: 'complete', iterations: 12, elapsed_ms: 900 },
+      });
+      window.recommendationChanged({ type: 'state_changed' }, { id: 'synthetic-ui' });
+    });
+    await section.getByText(/Pluribus 限时搜索/).waitFor();
+    await section.getByText(/本次搜索完成 12 轮/).waitFor();
+    await page.evaluate(() => {
+      Object.assign(window.recommendationTestStatus.recommendation.model, {
+        source: 'pluribus_blueprint', search: { status: 'coverage_missing', elapsed_ms: 70 },
+      });
+      window.recommendationChanged({ type: 'state_changed' }, { id: 'synthetic-ui' });
+    });
+    await section.getByText('后续策略覆盖不足，本次使用已训练的当前节点策略。', { exact: true }).waitFor();
     await page.evaluate(() => { window.holdNextStatus = true; });
     await page.getByRole('button', { name: '重新连接', exact: true }).click();
     await page.waitForFunction(() => typeof window.releaseStaleStatus === 'function');

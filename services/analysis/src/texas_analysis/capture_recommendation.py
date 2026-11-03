@@ -1,4 +1,4 @@
-"""State-bound eight-seat blueprint queries; missing coverage never becomes advice."""
+"""State-bound eight-seat policies and bounded full-range postflop search."""
 
 import hashlib
 import json
@@ -6,19 +6,25 @@ from datetime import UTC, datetime
 from time import monotonic
 
 from texas_game_core.mushroom_game import MushroomSessionGame
-from texas_strategy.evaluation import CancellationError
+from texas_strategy.evaluation import CancellationError, EvaluationLimitError, TraversalBudget
 from texas_strategy.mushroom_abstraction import MushroomContextGame
+from texas_strategy.mushroom_belief import MushroomFirstHandRoot
 from texas_strategy.mushroom_public import build_public_query, lookup_public_policy
 from texas_strategy.persistent_policy import policy_snapshot
+from texas_strategy.policy import PolicyEntry
+from texas_strategy.search import SearchCoverageError
 
 from .capture_ledger import derive_mushroom_ledger
 from .capture_replay import ReplayUnavailable, replay_capture
 
 CAPABILITY = "capture_recommendations_v1"
+SEARCH_CAPABILITY = "capture_search_v1"
 SCHEMA = "tgto.capture-recommendation/0.1"
 FRESHNESS_MS = 15_000
 LIFETIME_MS = 10_000
 QUERY_SECONDS = 0.5
+SEARCH_SECONDS = 1.5
+SEARCH_NODES = 30_000
 
 
 class RecommendationUnavailable(ValueError):
@@ -126,6 +132,41 @@ def _actions(replay, query, probabilities, turn):
     return result
 
 
+def _search(model, replay, query, policy, hero_cards, *, seed, seconds, should_cancel):
+    started = monotonic()
+    budget = TraversalBudget(
+        max_nodes=SEARCH_NODES, deadline_seconds=seconds, should_cancel=should_cancel
+    )
+    try:
+        root = MushroomFirstHandRoot(model, replay.state, policy, budget=budget)
+        solved = root.solve(
+            replay.player_ids.index("hero"),
+            tuple(hero_cards),
+            iterations=100,
+            seed=seed,
+            max_nodes=SEARCH_NODES,
+            max_rollout_nodes=SEARCH_NODES,
+        )
+        budget.check_time()
+        if solved.actions != query.actions or solved.blueprint_fallback_queries:
+            raise ValueError("Search actions or continuation coverage do not match the query")
+        entry = PolicyEntry(solved.actions, solved.probabilities)
+        detail = {
+            "status": "complete",
+            "iterations": solved.diagnostics.completed_iterations,
+            "stop_reason": solved.diagnostics.stop_reason,
+            "nodes": solved.diagnostics.nodes,
+            "rollout_nodes": solved.subgame.rollout_budget.nodes,
+            "root_draws": solved.subgame.root_draws,
+        }
+    except SearchCoverageError:
+        entry, detail = None, {"status": "coverage_missing"}
+    except EvaluationLimitError:
+        entry, detail = None, {"status": "budget"}
+    detail["elapsed_ms"] = int((monotonic() - started) * 1000)
+    return entry, detail
+
+
 def recommend(
     *,
     source,
@@ -136,6 +177,7 @@ def recommend(
     now_ms=None,
     should_cancel=None,
     ledger_resolver=None,
+    search=False,
 ):
     """One short committed policy snapshot; timestamps also reject queued old hands."""
     started = monotonic()
@@ -170,6 +212,8 @@ def recommend(
             raise RecommendationUnavailable("observation_expired")
         model, replay, query = prepare_query(state, prefix, ledger_resolver=ledger_resolver)
         check_cancelled()
+        search = search and replay.state.street > 0
+        deadline = started + QUERY_SECONDS + (SEARCH_SECONDS if search else 0)
         if policy_path is None or not policy_path.is_file():
             raise RecommendationUnavailable("model_unavailable")
         with policy_snapshot(model, policy_path, missing="error") as policy:
@@ -178,12 +222,31 @@ def recommend(
                 raise RecommendationUnavailable("requires_pluribus_model")
             entry = lookup_public_policy(policy, query)
             check_cancelled()
+            version = policy.metadata_digest
+            identity = json.dumps([source, state["hand_id"], query.information_key, version])
+            detail, strategy_source = None, "pluribus_blueprint"
+            if search:
+                remaining = min(SEARCH_SECONDS, deadline - monotonic() - 0.05)
+                if remaining <= 0:
+                    raise RecommendationUnavailable("query_timeout")
+                solved, detail = _search(
+                    model,
+                    replay,
+                    query,
+                    policy,
+                    state["hero_cards"],
+                    seed=int.from_bytes(hashlib.sha256(identity.encode()).digest()[:8]),
+                    seconds=remaining,
+                    should_cancel=check_cancelled,
+                )
+                check_cancelled()
+                if solved is not None:
+                    entry, strategy_source = solved, "pluribus_search"
             if entry is None:
                 raise RecommendationUnavailable("strategy_not_trained")
             actions = _actions(replay, query, entry.probabilities, state["turn"])
-            version = policy.metadata_digest
             model_info = {
-                "source": "pluribus_blueprint",
+                "source": strategy_source,
                 "version": version,
                 "iterations": policy.iterations,
                 "rules_version": model.rules_version,
@@ -191,10 +254,11 @@ def recommend(
                 "horizon_hands": 2,
                 "opponent_adaptation": False,
             }
-        if monotonic() - started >= QUERY_SECONDS:
+            if detail is not None:
+                model_info["search"] = detail
+        if monotonic() >= deadline:
             raise RecommendationUnavailable("query_timeout")
-        # Stable mixed-strategy draw: a reconnect cannot reroll an unchanged decision.
-        identity = json.dumps([source, state["hand_id"], query.information_key, version])
+        # Keep the same random quantile; a newly computed search distribution may still differ.
         draw = (int.from_bytes(hashlib.sha256(identity.encode()).digest()[:8]) >> 11) / 2**53
         selected = max(i for i, action in enumerate(actions) if action["probability"] > 0)
         for index, action in enumerate(actions):
@@ -208,7 +272,9 @@ def recommend(
             raise RecommendationUnavailable("observation_expired")
         result.update(
             status="ready",
-            reason="covered_blueprint",
+            reason="searched_strategy"
+            if strategy_source == "pluribus_search"
+            else "covered_blueprint",
             actions=actions,
             selected_action=selected,
             model=model_info,
@@ -219,7 +285,12 @@ def recommend(
                 "quality_not_certified",
                 "opponent_profiles_not_applied",
                 "client_raise_bounds_not_interpreted",
-            ],
+            ]
+            + (
+                ["local_search_not_equilibrium_certified"]
+                if strategy_source == "pluribus_search"
+                else []
+            ),
         )
     except (RecommendationUnavailable, ReplayUnavailable) as error:
         result["reason"] = str(error)

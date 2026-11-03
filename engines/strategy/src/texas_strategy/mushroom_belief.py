@@ -8,6 +8,7 @@ not reconstructed by replacing those histories with empty tuples here.
 
 from itertools import combinations
 from math import comb, exp, isfinite, log
+from time import monotonic
 
 from texas_game_core.cards import DECK, validate_cards
 from texas_game_core.mushroom_game import mushroom_information_key, mushroom_public_key
@@ -271,6 +272,14 @@ class MushroomFirstHandRoot:
         target = self.target_information_key(hero_seat, hero_cards)
         focus = self._participants.index(hero_seat), tuple(sorted(hero_cards))
         root = SampledRoot(self.public_key, self.actor, lambda rng: self._sample(rng, focus))
+        self._check()
+        remaining = (
+            None
+            if self._budget.deadline_seconds is None
+            else self._budget.deadline_seconds - (monotonic() - self._budget.started)
+        )
+        if remaining is not None and remaining <= 0:
+            raise EvaluationLimitError("Public root preparation exhausted the search budget")
         return solve_generated_subgame(
             self._model,
             root,
@@ -281,5 +290,6 @@ class MushroomFirstHandRoot:
             seed=seed,
             max_nodes=max_nodes,
             max_rollout_nodes=max_rollout_nodes,
+            deadline_seconds=remaining,
             should_cancel=self._check,
         )

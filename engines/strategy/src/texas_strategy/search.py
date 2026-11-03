@@ -875,7 +875,17 @@ def _train_search(
         return False
 
     trainer = Trainer(subgame, algorithm=algorithm, weighting=weighting, seed=seed)
-    diagnostics = trainer.train(iterations, max_nodes=max_nodes, should_cancel=check_search)
+    training_seconds = None
+    if clock.deadline_seconds is not None:
+        remaining = clock.deadline_seconds - (time.monotonic() - clock.started)
+        # Reserve time to publish completed iterations; the unfinished iteration rolls back.
+        training_seconds = max(0.0, remaining - min(0.05, remaining / 10))
+    diagnostics = trainer.train(
+        iterations,
+        max_nodes=max_nodes,
+        deadline_seconds=training_seconds,
+        should_cancel=check_search,
+    )
     check_search()
     if diagnostics.completed_iterations == 0:
         raise EvaluationLimitError("search budget allowed no complete training iteration")

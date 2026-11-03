@@ -173,7 +173,13 @@ function RecommendationView({ recommendation, connected }: { recommendation?: Re
     <ul className="events">{recommendation.actions.map(a => <li key={a.label}>{actionNames[a.action]} {amount(a)}
       <small>策略频率 {(a.probability * 100).toFixed(1)}%</small></li>)}</ul>
     <p className="notice">试运行策略：仅计算两手视野，尚未完成实局质量验收；玩家画像尚未用于调整建议。频率不是胜率。</p>
-    <details><summary>模型来源</summary><p className="help">Pluribus 自博弈策略 · 累计 {recommendation.model!.iterations} 轮 · {recommendation.model!.version.slice(0, 12)}</p></details>
+    <details><summary>模型来源</summary>
+      <p className="help">{recommendation.model!.source === 'pluribus_search' ? 'Pluribus 限时搜索' : 'Pluribus 自博弈策略'} · 累计 {recommendation.model!.iterations} 轮 · {recommendation.model!.version.slice(0, 12)}</p>
+      {recommendation.model!.search && <p className="help">{recommendation.model!.search.status === 'complete'
+        ? `本次搜索完成 ${recommendation.model!.search.iterations} 轮，耗时 ${recommendation.model!.search.elapsed_ms} 毫秒；不代表已收敛或最优。`
+        : recommendation.model!.search.status === 'coverage_missing' ? '后续策略覆盖不足，本次使用已训练的当前节点策略。'
+          : '搜索未在预算内完成，本次使用已训练的当前节点策略。'}</p>}
+    </details>
   </>;
 }
 

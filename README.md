@@ -2,7 +2,7 @@
 
 正式 Chrome 扩展现位于 [Client/](Client/)，与算法／训练服务共用本仓库。GitHub Actions 对每次 push（包括合并后的提交）和 pull request 执行检查与打包，生成 **Serve** 和 **Client** 两个下载工件。Serve 包含 Ubuntu 24.04 的离线安装器与锁定依赖，Client 为可加载扩展。安装和数据迁移见 [Serve 说明](deploy/README-Serve.md)、[Client 说明](deploy/README-Client.md)。
 
-当前发布范围为 **0.6.1 预览**：已覆盖的八人节点可实时展示 Pluribus 两手分桶平均策略，支持自动空闲训练、恢复与模型／WPK 学习数据迁移。完整八人在线搜索、画像适应和实局策略质量尚未验收，不能标记为正式 V1.0。当前行为与边界以 [八人建议说明](docs/eight-player-recommendations.md) 为准；以下保留算法工作台和历史研究入口。
+当前发布范围为 **0.7.0 预览**：已覆盖的八人节点可实时展示 Pluribus 两手分桶平均策略，翻后可协商全范围限时搜索，支持自动空闲训练、恢复与模型／WPK 学习数据迁移。完整八人在线搜索、画像适应和实局策略质量尚未验收，不能标记为正式 V1.0。当前行为与边界以 [八人建议说明](docs/eight-player-recommendations.md) 为准；以下保留算法工作台和历史研究入口。
 
 以 **Pluribus 的自博弈 blueprint＋深度受限搜索**为核心的扑克研究项目，目标产品为 **Chrome 扩展实时采集 WPK 数据＋服务器承担算法计算、搜索与训练**。当前提供可运行的离线研究工作台、模拟器与算法命令行。
 

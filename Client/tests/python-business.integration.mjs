@@ -32,7 +32,7 @@ class PythonSocket extends WS {
 }
 globalThis.WebSocket = PythonSocket;
 
-test('eight-player observations → Python pinned policy → extension recommendation, then stale invalidation', { timeout: 40000 }, async () => {
+for (const postflop of [false, true]) test(`eight-player ${postflop ? 'postflop search fallback' : 'preflop'} → Python pinned policy → extension recommendation, then stale invalidation`, { timeout: 40000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'tgto-eight-integration-'));
   const db = await database();
   let server, diagnostics = '';
@@ -43,12 +43,13 @@ import json,sys
 from pathlib import Path
 sys.path.insert(0, 'services/analysis/tests')
 from test_capture_recommendation import eight_player_events,fixture_model
-events=eight_player_events()
+from test_capture_search import eight_player_flop_events
+events=eight_player_flop_events() if sys.argv[2] == 'flop' else eight_player_events()
 path=Path(sys.argv[1])/'core'/'training.sqlite3'
 path.parent.mkdir()
 fixture_model(path, events)
 print(json.dumps(events))
-`, directory], { cwd: root, encoding: 'utf8' }));
+`, directory, postflop ? 'flop' : 'preflop'], { cwd: root, encoding: 'utf8' }));
     server = spawn(python, ['-m', 'texas_analysis'], { cwd: root,
       env: { ...process.env, TEXAS_PORT: '0', TEXAS_AUTO_TRAIN: '0', TEXAS_ALLOWED_ORIGINS: origin,
         TEXAS_API_TOKEN: token, TEXAS_DATA_DIR: directory }, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -66,7 +67,11 @@ print(json.dumps(events))
     const source = (await db.sessions()).find(s => s.id === business.id);
     assert.equal(currentRecommendation(recommendation, source, client.captureStates.get(business.id)), recommendation);
     assert.equal(recommendation.model.source, 'pluribus_blueprint');
-    assert.ok(recommendation.actions.some(a => a.action === 'CALL' && a.amount_delta === 8));
+    if (postflop) {
+      assert.equal(recommendation.model.search.status, 'coverage_missing');
+      assert.ok(client.capabilities.has('capture_search_v1'));
+      assert.ok(recommendation.actions.some(a => a.action === 'CHECK' && a.amount_delta === 0));
+    } else assert.ok(recommendation.actions.some(a => a.action === 'CALL' && a.amount_delta === 8));
     await db.appendBusiness(business.id, [{ kind: 'capture_gap', table_id: 'table-1', hand_id: 'table-1:2', data: { reason: 'synthetic interrupted decision' } }]);
     const changed = (await db.sessions()).find(s => s.id === business.id);
     assert.equal(currentRecommendation(recommendation, changed, client.captureStates.get(business.id)), undefined);

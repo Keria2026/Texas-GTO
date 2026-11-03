@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from texas_game_core.kuhn import KuhnPoker
-from texas_strategy import evaluation, search
+from texas_strategy import cfr, evaluation, search
 from texas_strategy.cfr import Trainer
 from texas_strategy.evaluation import CancellationError, EvaluationLimitError, TraversalBudget
 from texas_strategy.search import DepthLimitedGame, build_public_root, solve_subgame
@@ -204,6 +204,48 @@ def clock(monkeypatch):
     monkeypatch.setattr(search, "time", timer)
     monkeypatch.setattr(evaluation, "time", timer)
     return current
+
+
+def test_soft_training_deadline_keeps_complete_iterations_before_total_expiry(monkeypatch, clock):
+    trainers, checks = [], 0
+    enabled = True
+
+    class RecordedTrainer(Trainer):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            trainers.append(self)
+
+    def advance_time():
+        nonlocal checks
+        if enabled and trainers and trainers[0].iterations == 1:
+            checks += 1
+            if checks == 8:
+                clock[0] += 0.96
+        return False
+
+    monkeypatch.setattr(search, "Trainer", RecordedTrainer)
+    monkeypatch.setattr(cfr, "monotonic", lambda: clock[0])
+    game = KuhnPoker()
+    result = solve_subgame(
+        game,
+        game.replay((2, 0)),
+        UniformPolicy(),
+        iterations=4,
+        algorithm="mccfr",
+        sampled_rollouts=True,
+        seed=23,
+        deadline_seconds=1,
+        should_cancel=advance_time,
+    )
+    interrupted = trainers[0]
+    assert result.diagnostics.completed_iterations == interrupted.iterations == 1
+    assert result.diagnostics.stop_reason == "deadline" and result.elapsed_seconds < 1
+    enabled = False
+    control = Trainer(interrupted.game, algorithm="mccfr", weighting="linear", seed=23)
+    control.train(1)
+    assert interrupted._table == control._table
+    assert interrupted._rng.getstate() == control._rng.getstate()
+    assert result.policy.entries == control.average_policy().entries
 
 
 def test_root_and_training_share_the_total_deadline(monkeypatch, clock):

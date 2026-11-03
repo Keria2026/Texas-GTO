@@ -67,6 +67,31 @@ test('new local action, expiry, stop, lost history or changed turn immediately h
   db.db.close();
 });
 
+test('search provenance requires bounded completed work and explicit fallback diagnostics', () => {
+  const searched = ready();
+  searched.reason = 'searched_strategy'; searched.model.source = 'pluribus_search';
+  searched.model.search = { status: 'complete', iterations: 20, nodes: 2000, rollout_nodes: 1000, root_draws: 160, elapsed_ms: 800, stop_reason: 'iterations' };
+  assert.equal(parseRecommendation(searched).model?.source, 'pluribus_search');
+  for (const change of [
+    (m: any) => { delete m.model.search; },
+    (m: any) => { m.model.search.iterations = 0; },
+    (m: any) => { m.model.search.iterations = 101; },
+    (m: any) => { m.model.search.nodes = 30001; },
+    (m: any) => { m.model.search.root_draws = 0; },
+    (m: any) => { m.model.search.elapsed_ms = -1; },
+    (m: any) => { m.model.search.status = 'converged'; },
+    (m: any) => { m.model.search.stop_reason = 'cancelled'; },
+    (m: any) => { m.reason = 'covered_blueprint'; },
+    (m: any) => { m.model.source = 'pluribus_blueprint'; m.reason = 'covered_blueprint'; },
+  ]) { const value = structuredClone(searched); change(value); assert.throws(() => parseRecommendation(value)); }
+  for (const status of ['coverage_missing', 'budget']) {
+    const value = ready(); value.model.search = { status, elapsed_ms: 400 };
+    assert.equal(parseRecommendation(value).model?.source, 'pluribus_blueprint');
+    value.model.search.iterations = 1;
+    assert.throws(() => parseRecommendation(value));
+  }
+});
+
 test('wire recommendations require negotiation and ACK, ignore old versions and clear on disconnect', async () => {
   const db = await database(), net = await db.create(1, false), source = await db.create(1, false, net.id);
   const gap = { kind: 'capture_gap', table_id: null, hand_id: null, data: { reason: 'synthetic' } };

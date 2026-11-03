@@ -32,7 +32,7 @@ from .capture_contract import (
 )
 from .capture_ledger import derive_mushroom_ledger, derive_recorded_mushroom_ledger
 from .capture_recommendation import CAPABILITY as RECOMMENDATIONS_CAPABILITY
-from .capture_recommendation import recommend
+from .capture_recommendation import SEARCH_CAPABILITY, recommend
 from .capture_replay import ReplayUnavailable, replay_capture
 from .capture_state import reduce_event
 from .capture_state import response as capture_response
@@ -152,9 +152,10 @@ class StreamAuth(StrictModel):
                 "capture_state_v1",
                 "capture_profiles_v1",
                 "capture_recommendations_v1",
+                "capture_search_v1",
             ]
         ],
-        Field(max_length=4),
+        Field(max_length=5),
     ] = []
 
 
@@ -340,7 +341,7 @@ class NetworkStore:
             prefix = self._public_hand_prefix(db, origin, source, row[0], state)
         return row[0], state, prefix
 
-    def recommendation(self, origin, source, should_cancel=None):
+    def recommendation(self, origin, source, should_cancel=None, *, search=False):
         observed = self._observation(origin, source)
         if observed is None:
             return None
@@ -352,6 +353,7 @@ class NetworkStore:
             prefix=prefix,
             policy_path=self.policy_path,
             should_cancel=should_cancel,
+            search=search,
             ledger_resolver=lambda **kwargs: self._ledger(
                 origin, source, through, should_cancel=should_cancel, **kwargs
             ),
@@ -496,6 +498,7 @@ async def network_stream(
                     STATE_CAPABILITY,
                     PROFILES_CAPABILITY,
                     RECOMMENDATIONS_CAPABILITY,
+                    SEARCH_CAPABILITY,
                 ],
             }
         )
@@ -506,7 +509,11 @@ async def network_stream(
             with foreground() if foreground is not None else nullcontext():
                 try:
                     return await run_in_threadpool(
-                        capture_store.recommendation, origin, source, stop.is_set
+                        capture_store.recommendation,
+                        origin,
+                        source,
+                        stop.is_set,
+                        **({"search": True} if SEARCH_CAPABILITY in auth.capabilities else {}),
                     )
                 except CancellationError:
                     return None
