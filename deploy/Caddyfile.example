@@ -1,0 +1,11 @@
+# Set TGTO_DOMAIN to a real DNS name before starting Caddy.
+# Python stays on loopback. Only capture + health are exposed by this example.
+{$TGTO_DOMAIN} {
+    @capture path /v1/research/stream /v1/health
+    handle @capture {
+        reverse_proxy 127.0.0.1:8765
+    }
+    handle {
+        respond "Not found" 404
+    }
+}

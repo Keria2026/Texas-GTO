@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Texas GTO · 离线研究",
+  "description": "以 Pluribus 为核心的算法验证训练与策略库管理工作台。",
+  "version": "0.1.0",
+  "minimum_chrome_version": "116",
+  "permissions": ["sidePanel"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_title": "打开 Texas GTO" },
+  "side_panel": { "default_path": "index.html" },
+  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'self'" }
+}

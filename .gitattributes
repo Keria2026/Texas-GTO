@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.pdf binary
+# Keep the uploaded requirements snapshot byte-for-byte, including its final blank line.
+docs/requirements/poker-gto-chrome-design.md whitespace=-blank-at-eof

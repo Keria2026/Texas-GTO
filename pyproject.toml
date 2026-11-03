@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "texas-gto"
+version = "0.1.0"
+description = "Pluribus-inspired poker research and analysis foundations"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = "MIT"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.34,<1",
+    "websockets>=15,<17",
+]
+
+[project.scripts]
+texas-analysis = "texas_analysis.__main__:main"
+texas-research = "texas_strategy.cli:main"
+texas-wpk-inspect = "texas_wpk.inspect_har:main"
+texas-state = "texas_analysis.portable_state:main"
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "httpx>=0.28,<1", "ruff>=0.11,<1", "jsonschema>=4.23,<5"]
+
+[tool.hatch.build.targets.wheel]
+packages = [
+  "services/analysis/src/texas_analysis",
+  "engines/strategy/src/texas_strategy",
+  "packages/game-core/src/texas_game_core",
+  "adapters/wpk/src/texas_wpk",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["services/analysis/tests", "engines/strategy/tests", "adapters/wpk/tests", "packages/game-core/tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["services/analysis/src", "engines/strategy/src", "packages/game-core/src", "adapters/wpk/src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

@@ -1,0 +1,266 @@
+{
+  "created_at": "2026-11-01T08:19:38.865504+00:00",
+  "scope": "Eight seats at 800 points, two-hand approximation; no strategy strength claim",
+  "game": {
+    "game_id": "mushroom",
+    "abstraction": "mushroom_context",
+    "num_players": 8,
+    "stack": 800,
+    "stacks": null,
+    "small_blind": 2,
+    "big_blind": 4,
+    "straddle": 8,
+    "button": 0,
+    "session_hands": 2
+  },
+  "rules_version": "mushroom-context-v1:{\"actions\":\"fold_check_call_min_half_pot_pot_all_in_v1\",\"cards\":\"postflop-200:b20a1eebd3b6a5a9afd5bd208fcfcba1bba51c292bcb15fa8493c57536cee4df\",\"chipEdges\":[0,1,2,3,4,5,6,7,8,20,21,28,40,41,80,160,320,400,800,1600,3200,6400,12800,25600,51200],\"completedHands\":\"monetary_state_only\",\"recall\":\"current_card_bucket_hand_actions_bucketed_finances\",\"rules\":{\"bigBlind\":4,\"fees\":[20,40],\"horizon\":2,\"horizonSettlement\":\"refund_outstanding_contributions\",\"restraddle\":\"not_supported\",\"shortStraddle\":\"wait_for_top_up_and_advance_blinds\",\"smallBlind\":2,\"straddle\":8,\"topUpMinimumResultingStack\":400,\"trainingExternalFunding\":\"none\",\"waitingPlayers\":\"excluded_until_explicit_top_up\"},\"seats\":\"relative_to_initial_button\"}",
+  "seed": 42,
+  "card_codebook_checksum": "b20a1eebd3b6a5a9afd5bd208fcfcba1bba51c292bcb15fa8493c57536cee4df",
+  "initial_checkpoint_schema": 1,
+  "initial_milestones": [
+    {
+      "iterations": 2,
+      "information_sets": 4092,
+      "averaged_information_sets": 0,
+      "checkpoint_bytes": 1071047,
+      "elapsed_seconds": 10.521488030994078,
+      "stages": {
+        "0": 87,
+        "1": 13,
+        "4": 648,
+        "5": 555,
+        "6": 1013,
+        "7": 1776
+      }
+    },
+    {
+      "iterations": 10,
+      "information_sets": 14448,
+      "averaged_information_sets": 0,
+      "checkpoint_bytes": 3695911,
+      "elapsed_seconds": 40.387893614999484,
+      "stages": {
+        "0": 341,
+        "1": 47,
+        "2": 28,
+        "3": 24,
+        "4": 2831,
+        "5": 2250,
+        "6": 3414,
+        "7": 5513
+      }
+    },
+    {
+      "iterations": 25,
+      "information_sets": 34680,
+      "averaged_information_sets": 0,
+      "checkpoint_bytes": 9166629,
+      "elapsed_seconds": 103.53462323900021,
+      "stages": {
+        "0": 805,
+        "1": 139,
+        "2": 92,
+        "3": 90,
+        "4": 7975,
+        "5": 5640,
+        "6": 7915,
+        "7": 12024
+      }
+    },
+    {
+      "iterations": 50,
+      "information_sets": 63696,
+      "averaged_information_sets": 0,
+      "checkpoint_bytes": 17100218,
+      "elapsed_seconds": 207.72015502299473,
+      "stages": {
+        "0": 1612,
+        "1": 302,
+        "2": 194,
+        "3": 197,
+        "4": 16135,
+        "5": 10405,
+        "6": 13986,
+        "7": 20865
+      }
+    },
+    {
+      "iterations": 100,
+      "information_sets": 143366,
+      "averaged_information_sets": 140293,
+      "checkpoint_bytes": 40844296,
+      "elapsed_seconds": 445.6902384360001,
+      "stages": {
+        "0": 3073,
+        "1": 570,
+        "2": 453,
+        "3": 504,
+        "4": 35706,
+        "5": 23284,
+        "6": 31387,
+        "7": 48389
+      }
+    },
+    {
+      "iterations": 147,
+      "information_sets": 211203,
+      "averaged_information_sets": 140293,
+      "checkpoint_bytes": 60235436,
+      "elapsed_seconds": 659.923538736999,
+      "stages": {
+        "0": 4470,
+        "1": 892,
+        "2": 697,
+        "3": 785,
+        "4": 51523,
+        "5": 34115,
+        "6": 46480,
+        "7": 72241
+      }
+    },
+    {
+      "iterations": 200,
+      "information_sets": 278622,
+      "averaged_information_sets": 272690,
+      "checkpoint_bytes": 81263532,
+      "elapsed_seconds": 862.752723654994,
+      "stages": {
+        "0": 5932,
+        "1": 1199,
+        "2": 950,
+        "3": 1098,
+        "4": 69588,
+        "5": 45065,
+        "6": 61064,
+        "7": 93726
+      }
+    }
+  ],
+  "checkpoint_schema": 2,
+  "iterations": 200,
+  "information_sets": 278622,
+  "averaged_information_sets": 272690,
+  "averaged_sets_by_stage": {
+    "1": 1199,
+    "2": 950,
+    "3": 1098,
+    "4": 69588,
+    "5": 45065,
+    "6": 61064,
+    "7": 93726
+  },
+  "schema1_bytes": 81263532,
+  "schema2_bytes": 50069929,
+  "storage_reduction_fraction": 0.3838573371386319,
+  "schema2_sha256": "415ef49ce6e68cc64a0fd18cb8c31dc3ee0b484db4df188db128c1c53f2495c9",
+  "reload_with_default_64_mib_limit": "all_regrets_averages_rounds_rng_equal",
+  "continuation_comparison": "iteration_201_equal_after_both_formats",
+  "source_sha256_at_reload_and_continuation": {
+    "engines/strategy/src/texas_strategy/mushroom_abstraction.py": "085e335172e230cf57e471195b6433ede79b259238ddbfe817733abedd17d476",
+    "engines/strategy/src/texas_strategy/card_buckets.py": "61d82cc152862b4ef7a92d9a8c9b66c976ffe9e771621d0e556dc7c20b52fbcd",
+    "engines/strategy/src/texas_strategy/cfr.py": "55713c84694d427ea462a97930650f6af676f3de5aa15d66e1d123c9eb68057a",
+    "engines/strategy/src/texas_strategy/pluribus.py": "8f871af38fb1cfebe7f3fb3a39a77b50c72ccea81de514924d6e6e96021b2253",
+    "engines/strategy/src/texas_strategy/blueprint.py": "aeff3c04f766a6a8905bc57669096083087b4f16f020a9f0817d2ac580ed9345",
+    "packages/game-core/src/texas_game_core/mushroom_game.py": "68afa2b295596e51cc6dfd6d4135e11dfc92993a9dc7fdd60a34ddcfe80791b4",
+    "packages/game-core/src/texas_game_core/mushroom_table.py": "a309c449c6f623f0723f038868441ba4c554f6b5c9e6b0af8d71e70c37f0064c",
+    "packages/game-core/src/texas_game_core/mushroom_hand.py": "bc7998620840868677c42cac2fe5e6cbec487b949d4763dc0ebcaf171213beff",
+    "packages/game-core/src/texas_game_core/holdem.py": "11667c8b47944e5b15363002ea78fc119f58414409c8d93c44b303363a60ff99"
+  },
+  "initial_run_note": "Initial training process used schema 1; later checkpoint compaction and root binding were verified with the source hashes below. Numeric training and information encoding were unchanged. Elapsed times include concurrently running experiments.",
+  "card_clustering": {
+    "feature_version": "rank-draw-texture-v1",
+    "seed": 20261101,
+    "training_rows_per_street": 4096,
+    "holdout_rows_per_street": 1024,
+    "epochs": 6,
+    "diagnostics": {
+      "3": {
+        "holdout_mean_squared_distance": 0.09794624124774798,
+        "single_centroid_holdout_distance": 1.256539907375981,
+        "occupied_training_clusters": 200
+      },
+      "4": {
+        "holdout_mean_squared_distance": 0.11882008050811889,
+        "single_centroid_holdout_distance": 1.4711266116672144,
+        "occupied_training_clusters": 200
+      },
+      "5": {
+        "holdout_mean_squared_distance": 0.1439879360359228,
+        "single_centroid_holdout_distance": 1.7106571249582134,
+        "occupied_training_clusters": 200
+      }
+    },
+    "checksum": "b20a1eebd3b6a5a9afd5bd208fcfcba1bba51c292bcb15fa8493c57536cee4df"
+  },
+  "installed_wheel_worker": {
+    "iterations": 1,
+    "information_sets": 2410,
+    "checkpoint_schema": 2,
+    "checkpoint_sha256": "73ef292ca336787b9f271a61c58b7a02cd99b4fa77631ca51b97d8a444b84591",
+    "process_restart": "same_saved_checkpoint",
+    "abstraction": "mushroom_context",
+    "codebook_loaded_from_site_packages": true
+  },
+  "local_service": {
+    "loaded_iteration": 200,
+    "resumed_iteration": 201,
+    "phase": "training",
+    "checkpoint_bytes": 50265355,
+    "worker_pid": 543486,
+    "websocket": "Chrome Origin ready and pong; no live WPK hand tested",
+    "recommendation_ready": false
+  },
+  "previous_core_archive": {
+    "path": "artifacts/local/core/archive/full-history-v2-147-pcdt8j0c",
+    "iterations": 147,
+    "checkpoint_sha256": "95378e8bbbac5c7a624669fb419bccbfaa53a74ad418b011a01e1576595f6596",
+    "checkpoint_bytes": 67070458
+  },
+  "checks": {
+    "python_tests_passed": 543,
+    "node_protocol_tests_passed": 11,
+    "ruff": "passed",
+    "typescript": "passed",
+    "schemas": "passed",
+    "vite_build": "passed"
+  },
+  "current_benchmark_script_smoke": {
+    "milestones": [
+      {
+        "iterations": 2,
+        "information_sets": 4092,
+        "averaged_information_sets": 0,
+        "checkpoint_bytes": 606451,
+        "checkpoint_schema": 2,
+        "elapsed_seconds": 9.750547618998098,
+        "stages": {
+          "0": 87,
+          "1": 13,
+          "4": 648,
+          "5": 555,
+          "6": 1013,
+          "7": 1776
+        }
+      }
+    ],
+    "checkpoint_reload": "table_and_rng_equal",
+    "source_sha256": {
+      "engines/strategy/src/texas_strategy/mushroom_abstraction.py": "085e335172e230cf57e471195b6433ede79b259238ddbfe817733abedd17d476",
+      "engines/strategy/src/texas_strategy/card_buckets.py": "61d82cc152862b4ef7a92d9a8c9b66c976ffe9e771621d0e556dc7c20b52fbcd",
+      "engines/strategy/src/texas_strategy/cfr.py": "55713c84694d427ea462a97930650f6af676f3de5aa15d66e1d123c9eb68057a",
+      "engines/strategy/src/texas_strategy/pluribus.py": "8f871af38fb1cfebe7f3fb3a39a77b50c72ccea81de514924d6e6e96021b2253",
+      "engines/strategy/src/texas_strategy/blueprint.py": "aeff3c04f766a6a8905bc57669096083087b4f16f020a9f0817d2ac580ed9345",
+      "packages/game-core/src/texas_game_core/mushroom_game.py": "68afa2b295596e51cc6dfd6d4135e11dfc92993a9dc7fdd60a34ddcfe80791b4",
+      "packages/game-core/src/texas_game_core/mushroom_table.py": "a309c449c6f623f0723f038868441ba4c554f6b5c9e6b0af8d71e70c37f0064c",
+      "packages/game-core/src/texas_game_core/mushroom_hand.py": "bc7998620840868677c42cac2fe5e6cbec487b949d4763dc0ebcaf171213beff",
+      "packages/game-core/src/texas_game_core/holdem.py": "11667c8b47944e5b15363002ea78fc119f58414409c8d93c44b303363a60ff99",
+      "training/verify_mushroom_context.py": "087ae0054fe8bd09175ad0130b7a7da66610c0671f34598b73addb5d86ca4a7e"
+    }
+  },
+  "limitations": [
+    "No independent poker utility or live WPK recommendation validation",
+    "Default first betting round averaging interval is 10000; at 200 iterations it has no averaged entries",
+    "Imperfect recall and two-hand horizon are explicit approximations",
+    "The table remains growing; compaction does not provide unlimited idle training"
+  ]
+}

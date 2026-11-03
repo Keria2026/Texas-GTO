@@ -1,0 +1,48 @@
+{
+  "source_commit": "6dfb65b4d7ed081da509e8d8c3d82138c4708267",
+  "toolchain": {
+    "cmake": "3.31.10",
+    "gcc": "14.2.0",
+    "openmp": "4.5"
+  },
+  "tests": {
+    "executed": 7,
+    "failures": 0,
+    "disabled": 0,
+    "excluded": [
+      "TestCase.test_poker_solver_bench"
+    ]
+  },
+  "scope": "Two river CLI smoke checks; no independent proof of equilibrium or full-game correctness.",
+  "cases": [
+    {
+      "action_nodes": 6,
+      "strategy_rows": 105,
+      "max_normalization_error": 7.450580596923828e-08,
+      "root_player": 1,
+      "root_actions": [
+        "CHECK",
+        "BET 5.000000"
+      ],
+      "bytes": 5793,
+      "exit": 0,
+      "elapsed_s": 2.619,
+      "max_rss_kb": 107164,
+      "case": "texassolver-river",
+      "reported_exploitability_percent": 0.49999952,
+      "last_logged_iteration": 41,
+      "exact_combo_isomorphism_disabled": false
+    },
+    {
+      "exit": 0,
+      "elapsed_s": 2.92,
+      "max_rss_kb": 107160,
+      "action_nodes": 6,
+      "strategy_rows": 18,
+      "case": "texassolver-exact",
+      "reported_exploitability_percent": 0.4048586,
+      "last_logged_iteration": 21,
+      "exact_combo_isomorphism_disabled": true
+    }
+  ]
+}

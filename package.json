@@ -1,0 +1,17 @@
+{
+  "name": "texas-gto",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24 <25", "npm": ">=11 <13" },
+  "workspaces": ["apps/extension", "packages/protocol"],
+  "scripts": {
+    "dev": "npm run dev --workspace @texas-gto/extension",
+    "build": "npm run build --workspace @texas-gto/extension",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "node --test packages/protocol/test/*.test.mjs",
+    "schema:generate": "node packages/protocol/scripts/schema.mjs",
+    "schema:check": "node packages/protocol/scripts/schema.mjs --check",
+    "check": "npm run typecheck && npm test && npm run schema:check && npm run build"
+  }
+}

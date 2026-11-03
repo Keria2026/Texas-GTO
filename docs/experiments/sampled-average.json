@@ -1,0 +1,631 @@
+{
+  "scope": "isolated copies of frozen model; synthetic eight-player 800-point initial deals",
+  "not_measured": [
+    "live WPK correctness",
+    "live strategy strength",
+    "online search latency"
+  ],
+  "rlimit_as_bytes": 536870912,
+  "cgroup": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/tgto-sampled-average-check-20261101.service",
+  "source": "/home/ubuntu/Project/work/sampled-average-check/before.sqlite3",
+  "started_utc": "2026-11-01T09:01:01Z",
+  "variants": {
+    "legacy": {
+      "path": "/home/ubuntu/Project/work/sampled-average-check/run-20261101-isolated/legacy.sqlite3",
+      "open_validate_seconds": 11.98856937099481,
+      "before": {
+        "iterations": 354,
+        "information_sets": 496646,
+        "averaged_information_sets": 419263,
+        "disk_bytes_including_sidecars": 172638208,
+        "round_counts": [
+          [
+            0,
+            10584,
+            0
+          ],
+          [
+            1,
+            2189,
+            1869
+          ],
+          [
+            2,
+            1800,
+            1528
+          ],
+          [
+            3,
+            2106,
+            1755
+          ],
+          [
+            4,
+            124721,
+            107661
+          ],
+          [
+            5,
+            79890,
+            68870
+          ],
+          [
+            6,
+            108630,
+            93608
+          ],
+          [
+            7,
+            166726,
+            143972
+          ]
+        ],
+        "rng_sha256": "c8586545bbe67be4d4abb574e0debb8a15ca40987c56750615b15acb76ed7906",
+        "algorithm_version": "pluribus-iteration-schedule-v1",
+        "pluribus": {
+          "strategy_interval": 10000,
+          "snapshot_interval": 100,
+          "average_after": 0,
+          "prune_after": 200,
+          "discount_interval": 10,
+          "discount_until": 400,
+          "prune_threshold": -300000000.0,
+          "regret_floor": -310000000.0
+        }
+      },
+      "rounds": [
+        {
+          "iteration": 355,
+          "seconds": 7.587134143002913,
+          "diagnostics": {
+            "completed_iterations": 1,
+            "total_iterations": 355,
+            "nodes": 31536,
+            "elapsed_seconds": 7.573913372994866,
+            "stop_reason": "iterations",
+            "information_sets": 498913,
+            "pruned_actions": 0,
+            "full_traversals": 0,
+            "discounted_iterations": 0,
+            "snapshot_iterations": 0
+          },
+          "memory": {
+            "worker_peak_rss_bytes": 47378432,
+            "process_group_current_bytes": 403591168,
+            "process_group_peak_bytes": 403591168,
+            "process_group_limit_bytes": "536870912",
+            "memory_events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n"
+          }
+        },
+        {
+          "iteration": 356,
+          "seconds": 2.9189978419963154,
+          "diagnostics": {
+            "completed_iterations": 1,
+            "total_iterations": 356,
+            "nodes": 11888,
+            "elapsed_seconds": 2.9049635429983027,
+            "stop_reason": "iterations",
+            "information_sets": 499742,
+            "pruned_actions": 0,
+            "full_traversals": 1,
+            "discounted_iterations": 0,
+            "snapshot_iterations": 0
+          },
+          "memory": {
+            "worker_peak_rss_bytes": 47640576,
+            "process_group_current_bytes": 404127744,
+            "process_group_peak_bytes": 404492288,
+            "process_group_limit_bytes": "536870912",
+            "memory_events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n"
+          }
+        },
+        {
+          "iteration": 357,
+          "seconds": 5.104605036001885,
+          "diagnostics": {
+            "completed_iterations": 1,
+            "total_iterations": 357,
+            "nodes": 23049,
+            "elapsed_seconds": 5.092557044998102,
+            "stop_reason": "iterations",
+            "information_sets": 501169,
+            "pruned_actions": 0,
+            "full_traversals": 1,
+            "discounted_iterations": 0,
+            "snapshot_iterations": 0
+          },
+          "memory": {
+            "worker_peak_rss_bytes": 47771648,
+            "process_group_current_bytes": 405041152,
+            "process_group_peak_bytes": 405041152,
+            "process_group_limit_bytes": "536870912",
+            "memory_events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n"
+          }
+        }
+      ],
+      "after": {
+        "iterations": 357,
+        "information_sets": 501169,
+        "averaged_information_sets": 419263,
+        "disk_bytes_including_sidecars": 185048792,
+        "round_counts": [
+          [
+            0,
+            10686,
+            0
+          ],
+          [
+            1,
+            2221,
+            1869
+          ],
+          [
+            2,
+            1834,
+            1528
+          ],
+          [
+            3,
+            2164,
+            1755
+          ],
+          [
+            4,
+            125834,
+            107661
+          ],
+          [
+            5,
+            80593,
+            68870
+          ],
+          [
+            6,
+            109631,
+            93608
+          ],
+          [
+            7,
+            168206,
+            143972
+          ]
+        ],
+        "rng_sha256": "7037b4bd6afd34d03faa99942cc307d0c8c5cc073c53a6a72b1a669f63df9695",
+        "algorithm_version": "pluribus-iteration-schedule-v1",
+        "pluribus": {
+          "strategy_interval": 10000,
+          "snapshot_interval": 100,
+          "average_after": 0,
+          "prune_after": 200,
+          "discount_interval": 10,
+          "discount_until": 400,
+          "prune_threshold": -300000000.0,
+          "regret_floor": -310000000.0
+        }
+      },
+      "nonzero_regrets": {
+        "sha256": "d2f423ac35dec32ee4ba5c8fb74d12ad8f78e838660116948c557e95f305f939",
+        "rows": 479768
+      },
+      "synthetic_lookup": {
+        "source": "synthetic initial deals; seeds 0 through 99; no live WPK or search",
+        "iterations": 357,
+        "requests": 100,
+        "covered": 0,
+        "coverage_fraction": 0.0,
+        "snapshot_open_ms": 0.5876779978279956,
+        "pure_lookup_ms": {
+          "min": 0.001983,
+          "median": 0.013568,
+          "mean": 0.01894912,
+          "p95_nearest_rank": 0.049982,
+          "max": 0.185604
+        }
+      }
+    },
+    "sampled": {
+      "path": "/home/ubuntu/Project/work/sampled-average-check/run-20261101-isolated/sampled.sqlite3",
+      "open_validate_seconds": 13.921738393997657,
+      "before": {
+        "iterations": 354,
+        "information_sets": 496646,
+        "averaged_information_sets": 419263,
+        "disk_bytes_including_sidecars": 172638208,
+        "round_counts": [
+          [
+            0,
+            10584,
+            0
+          ],
+          [
+            1,
+            2189,
+            1869
+          ],
+          [
+            2,
+            1800,
+            1528
+          ],
+          [
+            3,
+            2106,
+            1755
+          ],
+          [
+            4,
+            124721,
+            107661
+          ],
+          [
+            5,
+            79890,
+            68870
+          ],
+          [
+            6,
+            108630,
+            93608
+          ],
+          [
+            7,
+            166726,
+            143972
+          ]
+        ],
+        "rng_sha256": "c8586545bbe67be4d4abb574e0debb8a15ca40987c56750615b15acb76ed7906",
+        "algorithm_version": "pluribus-iteration-schedule-v1",
+        "pluribus": {
+          "strategy_interval": 10000,
+          "snapshot_interval": 100,
+          "average_after": 0,
+          "prune_after": 200,
+          "discount_interval": 10,
+          "discount_until": 400,
+          "prune_threshold": -300000000.0,
+          "regret_floor": -310000000.0
+        }
+      },
+      "rounds": [
+        {
+          "iteration": 355,
+          "seconds": 7.206804966001073,
+          "diagnostics": {
+            "completed_iterations": 1,
+            "total_iterations": 355,
+            "nodes": 34920,
+            "elapsed_seconds": 7.189161119000346,
+            "stop_reason": "iterations",
+            "information_sets": 499077,
+            "pruned_actions": 0,
+            "full_traversals": 0,
+            "discounted_iterations": 0,
+            "snapshot_iterations": 0
+          },
+          "memory": {
+            "worker_peak_rss_bytes": 57208832,
+            "process_group_current_bytes": 415891456,
+            "process_group_peak_bytes": 415891456,
+            "process_group_limit_bytes": "536870912",
+            "memory_events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n"
+          }
+        },
+        {
+          "iteration": 356,
+          "seconds": 2.8093197089983732,
+          "diagnostics": {
+            "completed_iterations": 1,
+            "total_iterations": 356,
+            "nodes": 15242,
+            "elapsed_seconds": 2.7983838000000105,
+            "stop_reason": "iterations",
+            "information_sets": 500055,
+            "pruned_actions": 0,
+            "full_traversals": 1,
+            "discounted_iterations": 0,
+            "snapshot_iterations": 0
+          },
+          "memory": {
+            "worker_peak_rss_bytes": 59699200,
+            "process_group_current_bytes": 418869248,
+            "process_group_peak_bytes": 418869248,
+            "process_group_limit_bytes": "536870912",
+            "memory_events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n"
+          }
+        },
+        {
+          "iteration": 357,
+          "seconds": 4.455874977000349,
+          "diagnostics": {
+            "completed_iterations": 1,
+            "total_iterations": 357,
+            "nodes": 26359,
+            "elapsed_seconds": 4.446818299002189,
+            "stop_reason": "iterations",
+            "information_sets": 501638,
+            "pruned_actions": 0,
+            "full_traversals": 1,
+            "discounted_iterations": 0,
+            "snapshot_iterations": 0
+          },
+          "memory": {
+            "worker_peak_rss_bytes": 59961344,
+            "process_group_current_bytes": 419459072,
+            "process_group_peak_bytes": 419459072,
+            "process_group_limit_bytes": "536870912",
+            "memory_events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n"
+          }
+        }
+      ],
+      "upgrade": {
+        "before_entries": {
+          "sha256": "9fb95cd217498490a9aa1a90f334aa0ae4be9eb2d2c5b87d295887945d0eadf7",
+          "rows": 496646
+        },
+        "after_entries": {
+          "sha256": "9fb95cd217498490a9aa1a90f334aa0ae4be9eb2d2c5b87d295887945d0eadf7",
+          "rows": 496646
+        },
+        "entries_rounds_rng_unchanged": true,
+        "after": {
+          "iterations": 354,
+          "information_sets": 496646,
+          "averaged_information_sets": 419263,
+          "disk_bytes_including_sidecars": 172658840,
+          "round_counts": [
+            [
+              0,
+              10584,
+              0
+            ],
+            [
+              1,
+              2189,
+              1869
+            ],
+            [
+              2,
+              1800,
+              1528
+            ],
+            [
+              3,
+              2106,
+              1755
+            ],
+            [
+              4,
+              124721,
+              107661
+            ],
+            [
+              5,
+              79890,
+              68870
+            ],
+            [
+              6,
+              108630,
+              93608
+            ],
+            [
+              7,
+              166726,
+              143972
+            ]
+          ],
+          "rng_sha256": "c8586545bbe67be4d4abb574e0debb8a15ca40987c56750615b15acb76ed7906",
+          "algorithm_version": "pluribus-sampled-average-v1",
+          "pluribus": {
+            "strategy_interval": 1,
+            "snapshot_interval": 100,
+            "average_after": 0,
+            "prune_after": 200,
+            "discount_interval": 10,
+            "discount_until": 400,
+            "prune_threshold": -300000000.0,
+            "regret_floor": -310000000.0,
+            "average_mode": "sampled_uniform",
+            "average_samples": 16,
+            "sampled_average_from": 355
+          }
+        }
+      },
+      "after": {
+        "iterations": 357,
+        "information_sets": 501638,
+        "averaged_information_sets": 419791,
+        "disk_bytes_including_sidecars": 186016272,
+        "round_counts": [
+          [
+            0,
+            11155,
+            528
+          ],
+          [
+            1,
+            2221,
+            1869
+          ],
+          [
+            2,
+            1834,
+            1528
+          ],
+          [
+            3,
+            2164,
+            1755
+          ],
+          [
+            4,
+            125834,
+            107661
+          ],
+          [
+            5,
+            80593,
+            68870
+          ],
+          [
+            6,
+            109631,
+            93608
+          ],
+          [
+            7,
+            168206,
+            143972
+          ]
+        ],
+        "rng_sha256": "7037b4bd6afd34d03faa99942cc307d0c8c5cc073c53a6a72b1a669f63df9695",
+        "algorithm_version": "pluribus-sampled-average-v1",
+        "pluribus": {
+          "strategy_interval": 1,
+          "snapshot_interval": 100,
+          "average_after": 0,
+          "prune_after": 200,
+          "discount_interval": 10,
+          "discount_until": 400,
+          "prune_threshold": -300000000.0,
+          "regret_floor": -310000000.0,
+          "average_mode": "sampled_uniform",
+          "average_samples": 16,
+          "sampled_average_from": 355
+        }
+      },
+      "nonzero_regrets": {
+        "sha256": "d2f423ac35dec32ee4ba5c8fb74d12ad8f78e838660116948c557e95f305f939",
+        "rows": 479768
+      },
+      "synthetic_lookup": {
+        "source": "synthetic initial deals; seeds 0 through 99; no live WPK or search",
+        "iterations": 357,
+        "requests": 100,
+        "covered": 22,
+        "coverage_fraction": 0.22,
+        "snapshot_open_ms": 0.47724799514980987,
+        "pure_lookup_ms": {
+          "min": 0.001971,
+          "median": 0.0138815,
+          "mean": 0.01395167,
+          "p95_nearest_rank": 0.02075,
+          "max": 0.043116
+        }
+      }
+    }
+  },
+  "strict_pass": true,
+  "source_bytes": 172605440,
+  "source_sha256_before": "389f0563ad3d9fb94dd7d5809972dafd3d0b91e6057e56070b16035774192df7",
+  "phase": "passed",
+  "memory": {
+    "worker_peak_rss_bytes": 59961344,
+    "process_group_current_bytes": 406732800,
+    "process_group_peak_bytes": 421474304,
+    "process_group_limit_bytes": "536870912",
+    "memory_events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n"
+  },
+  "nonzero_regrets_equal": true,
+  "regret_rng_equal": true,
+  "source_sha256_after": "389f0563ad3d9fb94dd7d5809972dafd3d0b91e6057e56070b16035774192df7",
+  "elapsed_seconds": 69.81836420200125,
+  "validation": {
+    "python_tests": 657,
+    "ruff": "passed",
+    "plugin_version": "0.5.0-preview",
+    "real_wpk_recommendation": "not_implemented",
+    "node_tests": 11,
+    "typecheck_schema_build": "passed"
+  },
+  "portable_wheel": {
+    "module": "/home/ubuntu/Project/work/texas-portable-eVj0w2/venv/lib/python3.12/site-packages/texas_strategy/training_store.py",
+    "codebook": "/home/ubuntu/Project/work/texas-portable-eVj0w2/venv/lib/python3.12/site-packages/texas_strategy/mushroom_card_clusters.json",
+    "iterations_before_export": 1,
+    "iterations_after_import": 2,
+    "information_sets": 4426,
+    "cli_backup": "passed",
+    "source_free_worker_restart": "passed",
+    "all_values_and_rng_equal": true
+  },
+  "live_upgrade": {
+    "before": {
+      "iterations": 397,
+      "counts": [
+        547087,
+        419263
+      ],
+      "config": {
+        "strategy_interval": 10000,
+        "snapshot_interval": 100,
+        "average_after": 0,
+        "prune_after": 200,
+        "discount_interval": 10,
+        "discount_until": 400,
+        "prune_threshold": -300000000.0,
+        "regret_floor": -310000000.0
+      },
+      "rng_sha256": "4e7d4d0f907158b7201b73a44726499b9ad5da1243b91ab13f69f0f2b780f4f0"
+    },
+    "new_config": {
+      "strategy_interval": 1,
+      "snapshot_interval": 100,
+      "average_after": 0,
+      "prune_after": 200,
+      "discount_interval": 10,
+      "discount_until": 400,
+      "prune_threshold": -300000000.0,
+      "regret_floor": -310000000.0,
+      "average_mode": "sampled_uniform",
+      "average_samples": 16,
+      "sampled_average_from": 398
+    },
+    "new_algorithm_version": "pluribus-sampled-average-v1",
+    "metadata_rows_changed": 1,
+    "capture_events_before": 1,
+    "backup": "/home/ubuntu/Project/work/sampled-average-check/live-before-20261101T090406Z"
+  },
+  "live_verified": {
+    "status": {
+      "schema_version": "1.1",
+      "enabled": true,
+      "phase": "training",
+      "worker_pid": 577609,
+      "game": {
+        "game_id": "mushroom",
+        "abstraction": "mushroom_context",
+        "num_players": 8,
+        "stack": 800,
+        "stacks": null,
+        "small_blind": 2,
+        "big_blind": 4,
+        "straddle": 8,
+        "button": 0,
+        "session_hands": 2
+      },
+      "algorithm": "pluribus",
+      "objective": "expected_net_points",
+      "iterations": 407,
+      "information_sets": 563261,
+      "averaged_information_sets": 544438,
+      "checkpoint_bytes": 361295856,
+      "quality": "finite_horizon_unvalidated",
+      "recommendation_ready": false,
+      "reason": null
+    },
+    "stage0_averaged": 1709,
+    "systemd": {
+      "MainPID": 577603,
+      "MemoryCurrent": 276115456,
+      "MemoryPeak": 276746240,
+      "MemoryMax": 1073741824,
+      "ActiveState": "active"
+    },
+    "capture_events": 1,
+    "capture_business_actions": 0,
+    "capture_event_kinds": {
+      "capture_gap": 1
+    }
+  }
+}

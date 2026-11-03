@@ -1,0 +1,21 @@
+{
+  "original_repository": "Keria2026/Texas-GTO",
+  "branch": "dev",
+  "base_commit": "0483bc26b3b065514e81df7e86fbf296d1374f51",
+  "original_status": "uncommitted local prototype; first published here as reference",
+  "verification_date": "2026-11-01",
+  "files_sha256": {
+    "field-shapes.json": "13d86fed0164b25e8e4fedb9292258847bc25500b092da59fe812b24bb793e9a",
+    "legacy/SOURCE.md": "c90d2efc414fb3e1b8fcc6e2a9715b7c12151020218dff0f81d1a4f7335804c3",
+    "legacy/adapters/wpk/README.md": "058c4c0cf14e8817b0ac96f15e89f70f3387ed3d8dbd33665da9c1219467468c",
+    "legacy/adapters/wpk/observer.mjs": "336b61c18b9868a4fb0d4905965ab1635a0ae3fc816f1019b102390e54de6dac",
+    "legacy/adapters/wpk/stream.mjs": "ee65e11f3efeb1b8d717650d27add19f95e1243d1644c37ce736ffa04bea0c47",
+    "legacy/docs/research-websocket.md": "7bb8e7bf9be481f2019893f72fdec7d06da29c63fc8c2e3fdd129969aca92d12",
+    "legacy/packages/protocol/schemas/observed-snapshot.schema.json": "65e853b9f2b76f543f5b64ab58922e750d8c1819af3e2964279ec90c82572061",
+    "legacy/packages/protocol/src/index.ts": "31c904d119e8dbc4e10bde0e9e868ec3cd2b5368d7bc0f53d84d4821fbc5cae0",
+    "legacy/packages/protocol/test/live-observer.test.mjs": "41fe01b51eaf11b435310adc92ec56fd45e1fde68600e2a230462165a5a565e1",
+    "offline/README.txt": "4e591038085dc08161a52df238def765d532c6f3661dbd260a358205a24a0641",
+    "offline/src/offline-hands.mjs": "cedd3ee9072665df416bc7ba982cdd5ede4c674b1fc8a1ba399bd6c7a08fae89",
+    "offline/test/offline-hands.test.mjs": "1bb20e90380b40e36d01c1f9c8a05783a7c147677fad1abf0f4f31c17439db67"
+  }
+}

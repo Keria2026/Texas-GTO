@@ -1,0 +1,603 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "hero": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "string",
+          "pattern": "^[2-9TJQKA][cdhs]$"
+        },
+        {
+          "type": "string",
+          "pattern": "^[2-9TJQKA][cdhs]$"
+        }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "board": {
+      "maxItems": 5,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[2-9TJQKA][cdhs]$"
+      }
+    },
+    "street": {
+      "type": "string",
+      "enum": [
+        "preflop",
+        "flop",
+        "turn",
+        "river"
+      ]
+    },
+    "current_rank": {
+      "anyOf": [
+        {
+          "minItems": 2,
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 14
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "current_category": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "high_card",
+            "one_pair",
+            "two_pair",
+            "three_of_a_kind",
+            "straight",
+            "flush",
+            "full_house",
+            "four_of_a_kind",
+            "straight_flush"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nuts": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "theoretical": {
+              "type": "object",
+              "properties": {
+                "best_rank": {
+                  "minItems": 2,
+                  "maxItems": 6,
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 14
+                  }
+                },
+                "best_category": {
+                  "type": "string",
+                  "enum": [
+                    "high_card",
+                    "one_pair",
+                    "two_pair",
+                    "three_of_a_kind",
+                    "straight",
+                    "flush",
+                    "full_house",
+                    "four_of_a_kind",
+                    "straight_flush"
+                  ]
+                },
+                "hero_is_nuts": {
+                  "type": "boolean"
+                },
+                "combinations_evaluated": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "best_rank",
+                "best_category",
+                "hero_is_nuts",
+                "combinations_evaluated"
+              ],
+              "additionalProperties": false
+            },
+            "blocker_aware": {
+              "type": "object",
+              "properties": {
+                "best_rank": {
+                  "minItems": 2,
+                  "maxItems": 6,
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 14
+                  }
+                },
+                "best_category": {
+                  "type": "string",
+                  "enum": [
+                    "high_card",
+                    "one_pair",
+                    "two_pair",
+                    "three_of_a_kind",
+                    "straight",
+                    "flush",
+                    "full_house",
+                    "four_of_a_kind",
+                    "straight_flush"
+                  ]
+                },
+                "hero_is_nuts": {
+                  "type": "boolean"
+                },
+                "combinations_evaluated": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "best_rank",
+                "best_category",
+                "hero_is_nuts",
+                "combinations_evaluated"
+              ],
+              "additionalProperties": false
+            },
+            "range": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "best_rank": {
+                      "minItems": 2,
+                      "maxItems": 6,
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 14
+                      }
+                    },
+                    "best_category": {
+                      "type": "string",
+                      "enum": [
+                        "high_card",
+                        "one_pair",
+                        "two_pair",
+                        "three_of_a_kind",
+                        "straight",
+                        "flush",
+                        "full_house",
+                        "four_of_a_kind",
+                        "straight_flush"
+                      ]
+                    },
+                    "hero_is_nuts": {
+                      "type": "boolean"
+                    },
+                    "combinations_evaluated": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "best_rank",
+                    "best_category",
+                    "hero_is_nuts",
+                    "combinations_evaluated"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "theoretical",
+            "blocker_aware",
+            "range"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "opponents": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "range_source": {
+              "type": "string"
+            },
+            "combinations_evaluated": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "best_rank": {
+              "minItems": 2,
+              "maxItems": 6,
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 14
+              }
+            },
+            "best_category": {
+              "type": "string",
+              "enum": [
+                "high_card",
+                "one_pair",
+                "two_pair",
+                "three_of_a_kind",
+                "straight",
+                "flush",
+                "full_house",
+                "four_of_a_kind",
+                "straight_flush"
+              ]
+            },
+            "current_ahead_weight": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "current_tied_weight": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "current_behind_weight": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "ahead_combinations": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "tied_combinations": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "beating_combinations_count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "beating_combinations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "cards": {
+                    "type": "array",
+                    "prefixItems": [
+                      {
+                        "type": "string",
+                        "pattern": "^[2-9TJQKA][cdhs]$"
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^[2-9TJQKA][cdhs]$"
+                      }
+                    ],
+                    "items": false,
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "rank": {
+                    "minItems": 2,
+                    "maxItems": 6,
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 14
+                    }
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "high_card",
+                      "one_pair",
+                      "two_pair",
+                      "three_of_a_kind",
+                      "straight",
+                      "flush",
+                      "full_house",
+                      "four_of_a_kind",
+                      "straight_flush"
+                    ]
+                  },
+                  "normalized_weight": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                },
+                "required": [
+                  "cards",
+                  "rank",
+                  "category",
+                  "normalized_weight"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "beating_combinations_truncated": {
+              "type": "boolean"
+            },
+            "normalization_underflow_combinations": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "weight_normalization": {
+              "type": "string",
+              "const": "sum_to_one_after_known_card_blockers"
+            }
+          },
+          "required": [
+            "range_source",
+            "combinations_evaluated",
+            "best_rank",
+            "best_category",
+            "current_ahead_weight",
+            "current_tied_weight",
+            "current_behind_weight",
+            "ahead_combinations",
+            "tied_combinations",
+            "beating_combinations_count",
+            "beating_combinations",
+            "beating_combinations_truncated",
+            "normalization_underflow_combinations",
+            "weight_normalization"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "range_comparison": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "range_source": {
+              "type": "string"
+            },
+            "combinations_evaluated": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "best_rank": {
+              "minItems": 2,
+              "maxItems": 6,
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 14
+              }
+            },
+            "best_category": {
+              "type": "string",
+              "enum": [
+                "high_card",
+                "one_pair",
+                "two_pair",
+                "three_of_a_kind",
+                "straight",
+                "flush",
+                "full_house",
+                "four_of_a_kind",
+                "straight_flush"
+              ]
+            },
+            "current_ahead_weight": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "current_tied_weight": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "current_behind_weight": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "ahead_combinations": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "tied_combinations": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "beating_combinations_count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "beating_combinations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "cards": {
+                    "type": "array",
+                    "prefixItems": [
+                      {
+                        "type": "string",
+                        "pattern": "^[2-9TJQKA][cdhs]$"
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^[2-9TJQKA][cdhs]$"
+                      }
+                    ],
+                    "items": false,
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "rank": {
+                    "minItems": 2,
+                    "maxItems": 6,
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 14
+                    }
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "high_card",
+                      "one_pair",
+                      "two_pair",
+                      "three_of_a_kind",
+                      "straight",
+                      "flush",
+                      "full_house",
+                      "four_of_a_kind",
+                      "straight_flush"
+                    ]
+                  },
+                  "normalized_weight": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                },
+                "required": [
+                  "cards",
+                  "rank",
+                  "category",
+                  "normalized_weight"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "beating_combinations_truncated": {
+              "type": "boolean"
+            },
+            "normalization_underflow_combinations": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "weight_normalization": {
+              "type": "string",
+              "const": "sum_to_one_after_known_card_blockers"
+            }
+          },
+          "required": [
+            "range_source",
+            "combinations_evaluated",
+            "best_rank",
+            "best_category",
+            "current_ahead_weight",
+            "current_tied_weight",
+            "current_behind_weight",
+            "ahead_combinations",
+            "tied_combinations",
+            "beating_combinations_count",
+            "beating_combinations",
+            "beating_combinations_truncated",
+            "normalization_underflow_combinations",
+            "weight_normalization"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "model_version": {
+      "type": "string",
+      "const": "current-hand-strength-v1"
+    },
+    "rules_version": {
+      "type": "string",
+      "const": "standard-high-holdem-v1"
+    },
+    "evaluation_scope": {
+      "type": "string",
+      "const": "current_street_only"
+    },
+    "equity_computed": {
+      "type": "boolean",
+      "const": false
+    },
+    "action_ev_computed": {
+      "type": "boolean",
+      "const": false
+    }
+  },
+  "required": [
+    "hero",
+    "board",
+    "street",
+    "current_rank",
+    "current_category",
+    "nuts",
+    "opponents",
+    "range_comparison",
+    "warnings",
+    "model_version",
+    "rules_version",
+    "evaluation_scope",
+    "equity_computed",
+    "action_ev_computed"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,407 @@
+{
+  "created_at": "2026-11-01T14:07:11.765131+08:00",
+  "base_commit": "4969ef3118264c89a0bddd8a28639784abb3f853",
+  "source_sha256": {
+    "engines/strategy/src/texas_strategy/pluribus.py": "8f871af38fb1cfebe7f3fb3a39a77b50c72ccea81de514924d6e6e96021b2253",
+    "engines/strategy/src/texas_strategy/cfr.py": "db04f8f3c629305b25ad3d9a0f6c57744cc82b4f5df10596cbb8ba7378c42079",
+    "engines/strategy/src/texas_strategy/blueprint.py": "05a9d1a73fc055a40fe10a600ac3e8debc9ae2d01f7e3b58378f2f607ecdc969",
+    "engines/strategy/src/texas_strategy/search.py": "6024c03a8758df963c95aedd66961be4ef9a7badfc596ecb841ed577ce39b8dd"
+  },
+  "source": "https://noambrown.github.io/papers/19-Science-Superhuman_Supp.pdf",
+  "scope": "Iteration-scheduled Algorithm 1; finite-game verification, not full Pluribus reproduction or mushroom-poker validation",
+  "runs": [
+    {
+      "game": "kuhn",
+      "seed": 0,
+      "metadata": {
+        "game_id": "kuhn",
+        "rules_version": "kuhn-2p-v1",
+        "num_players": 2,
+        "algorithm": "pluribus",
+        "algorithm_version": "pluribus-iteration-schedule-v1",
+        "chance_sampling": "enumerated",
+        "weighting": "linear",
+        "iterations": 3000,
+        "seed": 0,
+        "exploration": 0.0,
+        "pluribus": {
+          "strategy_interval": 1,
+          "snapshot_interval": 100,
+          "average_after": 0,
+          "prune_after": 200,
+          "discount_interval": 10,
+          "discount_until": 400,
+          "prune_threshold": -300000000.0,
+          "regret_floor": -310000000.0
+        }
+      },
+      "blueprint_checksum": "e5549b5fcd312c4eb2c6ce76f7e79a75cda619242cfb75851e8bcd4b35e3a8ca",
+      "training": {
+        "completed_iterations": 3000,
+        "total_iterations": 3000,
+        "nodes": 74499,
+        "elapsed_seconds": 1.0683775799989235,
+        "stop_reason": "iterations",
+        "information_sets": 12,
+        "pruned_actions": 0,
+        "full_traversals": 689,
+        "discounted_iterations": 39,
+        "snapshot_iterations": 30
+      },
+      "evaluation": {
+        "policy_values": [
+          -0.054875201881193936,
+          0.054875201881193936
+        ],
+        "best_response_values": [
+          -0.03183964856998055,
+          0.06259952546905392
+        ],
+        "nash_conv": 0.030759876899073377,
+        "exploitability": 0.015379938449536688,
+        "is_zero_sum": true,
+        "nodes": 55,
+        "quality": "exact_finite_game"
+      },
+      "fallback_queries": 0
+    },
+    {
+      "game": "kuhn",
+      "seed": 7,
+      "metadata": {
+        "game_id": "kuhn",
+        "rules_version": "kuhn-2p-v1",
+        "num_players": 2,
+        "algorithm": "pluribus",
+        "algorithm_version": "pluribus-iteration-schedule-v1",
+        "chance_sampling": "enumerated",
+        "weighting": "linear",
+        "iterations": 3000,
+        "seed": 7,
+        "exploration": 0.0,
+        "pluribus": {
+          "strategy_interval": 1,
+          "snapshot_interval": 100,
+          "average_after": 0,
+          "prune_after": 200,
+          "discount_interval": 10,
+          "discount_until": 400,
+          "prune_threshold": -300000000.0,
+          "regret_floor": -310000000.0
+        }
+      },
+      "blueprint_checksum": "2a026095e9251f2ec6374ff77c84f7c108beaf728c90748a30e202763fc9961c",
+      "training": {
+        "completed_iterations": 3000,
+        "total_iterations": 3000,
+        "nodes": 75682,
+        "elapsed_seconds": 0.9011168210054166,
+        "stop_reason": "iterations",
+        "information_sets": 12,
+        "pruned_actions": 0,
+        "full_traversals": 673,
+        "discounted_iterations": 39,
+        "snapshot_iterations": 30
+      },
+      "evaluation": {
+        "policy_values": [
+          -0.05484579158587888,
+          0.05484579158587888
+        ],
+        "best_response_values": [
+          -0.026494819267534678,
+          0.06777110156422053
+        ],
+        "nash_conv": 0.041276282296685854,
+        "exploitability": 0.020638141148342927,
+        "is_zero_sum": true,
+        "nodes": 55,
+        "quality": "exact_finite_game"
+      },
+      "fallback_queries": 0
+    },
+    {
+      "game": "kuhn",
+      "seed": 42,
+      "metadata": {
+        "game_id": "kuhn",
+        "rules_version": "kuhn-2p-v1",
+        "num_players": 2,
+        "algorithm": "pluribus",
+        "algorithm_version": "pluribus-iteration-schedule-v1",
+        "chance_sampling": "enumerated",
+        "weighting": "linear",
+        "iterations": 3000,
+        "seed": 42,
+        "exploration": 0.0,
+        "pluribus": {
+          "strategy_interval": 1,
+          "snapshot_interval": 100,
+          "average_after": 0,
+          "prune_after": 200,
+          "discount_interval": 10,
+          "discount_until": 400,
+          "prune_threshold": -300000000.0,
+          "regret_floor": -310000000.0
+        }
+      },
+      "blueprint_checksum": "0f4304a8b5829a01a8e4ad43e4cff15c39b3d11b2c1aa93ab5ba51cbda8b6ac0",
+      "training": {
+        "completed_iterations": 3000,
+        "total_iterations": 3000,
+        "nodes": 76908,
+        "elapsed_seconds": 0.9651865150008234,
+        "stop_reason": "iterations",
+        "information_sets": 12,
+        "pruned_actions": 0,
+        "full_traversals": 652,
+        "discounted_iterations": 39,
+        "snapshot_iterations": 30
+      },
+      "evaluation": {
+        "policy_values": [
+          -0.055128316548392564,
+          0.055128316548392564
+        ],
+        "best_response_values": [
+          -0.03248464992854649,
+          0.05944607937426294
+        ],
+        "nash_conv": 0.026961429445716452,
+        "exploitability": 0.013480714722858226,
+        "is_zero_sum": true,
+        "nodes": 55,
+        "quality": "exact_finite_game"
+      },
+      "fallback_queries": 0
+    },
+    {
+      "game": "leduc",
+      "seed": 0,
+      "metadata": {
+        "game_id": "leduc",
+        "rules_version": "leduc-2p-v1",
+        "num_players": 2,
+        "algorithm": "pluribus",
+        "algorithm_version": "pluribus-iteration-schedule-v1",
+        "chance_sampling": "enumerated",
+        "weighting": "linear",
+        "iterations": 2000,
+        "seed": 0,
+        "exploration": 0.0,
+        "pluribus": {
+          "strategy_interval": 1,
+          "snapshot_interval": 10,
+          "average_after": 0,
+          "prune_after": 200,
+          "discount_interval": 10,
+          "discount_until": 400,
+          "prune_threshold": -10.0,
+          "regret_floor": -11.0
+        }
+      },
+      "blueprint_checksum": "0d569b4b971bbd1eeb4191fd08cb84c7b6872859a7cdaac1b0c590f887d89e32",
+      "training": {
+        "completed_iterations": 2000,
+        "total_iterations": 2000,
+        "nodes": 104533,
+        "elapsed_seconds": 2.538856205996126,
+        "stop_reason": "iterations",
+        "information_sets": 288,
+        "pruned_actions": 1952,
+        "full_traversals": 587,
+        "discounted_iterations": 39,
+        "snapshot_iterations": 200
+      },
+      "evaluation": {
+        "policy_values": [
+          -0.11003159311616464,
+          0.11003159311616464
+        ],
+        "best_response_values": [
+          0.6973575153499336,
+          0.6298500078003819
+        ],
+        "nash_conv": 1.3272075231503155,
+        "exploitability": 0.6636037615751578,
+        "is_zero_sum": true,
+        "nodes": 9451,
+        "quality": "exact_finite_game"
+      },
+      "fallback_queries": 0
+    },
+    {
+      "game": "leduc",
+      "seed": 7,
+      "metadata": {
+        "game_id": "leduc",
+        "rules_version": "leduc-2p-v1",
+        "num_players": 2,
+        "algorithm": "pluribus",
+        "algorithm_version": "pluribus-iteration-schedule-v1",
+        "chance_sampling": "enumerated",
+        "weighting": "linear",
+        "iterations": 2000,
+        "seed": 7,
+        "exploration": 0.0,
+        "pluribus": {
+          "strategy_interval": 1,
+          "snapshot_interval": 10,
+          "average_after": 0,
+          "prune_after": 200,
+          "discount_interval": 10,
+          "discount_until": 400,
+          "prune_threshold": -10.0,
+          "regret_floor": -11.0
+        }
+      },
+      "blueprint_checksum": "cdd79b8caa9865ff1c4aa488751bd0d84ee735c083aba2e716f71350a20dbb6f",
+      "training": {
+        "completed_iterations": 2000,
+        "total_iterations": 2000,
+        "nodes": 111657,
+        "elapsed_seconds": 2.7756743040008587,
+        "stop_reason": "iterations",
+        "information_sets": 288,
+        "pruned_actions": 2423,
+        "full_traversals": 577,
+        "discounted_iterations": 39,
+        "snapshot_iterations": 200
+      },
+      "evaluation": {
+        "policy_values": [
+          -0.0686375521760058,
+          0.0686375521760058
+        ],
+        "best_response_values": [
+          0.4325181260206889,
+          0.7600277034296203
+        ],
+        "nash_conv": 1.1925458294503093,
+        "exploitability": 0.5962729147251546,
+        "is_zero_sum": true,
+        "nodes": 9451,
+        "quality": "exact_finite_game"
+      },
+      "fallback_queries": 0
+    },
+    {
+      "game": "leduc",
+      "seed": 42,
+      "metadata": {
+        "game_id": "leduc",
+        "rules_version": "leduc-2p-v1",
+        "num_players": 2,
+        "algorithm": "pluribus",
+        "algorithm_version": "pluribus-iteration-schedule-v1",
+        "chance_sampling": "enumerated",
+        "weighting": "linear",
+        "iterations": 2000,
+        "seed": 42,
+        "exploration": 0.0,
+        "pluribus": {
+          "strategy_interval": 1,
+          "snapshot_interval": 10,
+          "average_after": 0,
+          "prune_after": 200,
+          "discount_interval": 10,
+          "discount_until": 400,
+          "prune_threshold": -10.0,
+          "regret_floor": -11.0
+        }
+      },
+      "blueprint_checksum": "6586a6e5f84a43d43552cb1e4dc011aa8d0bd3290eec4796e567005fa1dfa2a0",
+      "training": {
+        "completed_iterations": 2000,
+        "total_iterations": 2000,
+        "nodes": 99898,
+        "elapsed_seconds": 2.5234116989959148,
+        "stop_reason": "iterations",
+        "information_sets": 288,
+        "pruned_actions": 2408,
+        "full_traversals": 578,
+        "discounted_iterations": 39,
+        "snapshot_iterations": 200
+      },
+      "evaluation": {
+        "policy_values": [
+          -0.039691459384227454,
+          0.039691459384227454
+        ],
+        "best_response_values": [
+          0.41717782440850576,
+          0.7181287741195409
+        ],
+        "nash_conv": 1.1353065985280466,
+        "exploitability": 0.5676532992640233,
+        "is_zero_sum": true,
+        "nodes": 9451,
+        "quality": "exact_finite_game"
+      },
+      "fallback_queries": 0
+    }
+  ],
+  "search": {
+    "diagnostics": {
+      "player": 0,
+      "information_key": "kuhn-2p-v1|play||player:0|card:2",
+      "actions": [
+        "check",
+        "bet"
+      ],
+      "probabilities": [
+        0.3709242741097476,
+        0.6290757258902523
+      ],
+      "root_worlds": 6,
+      "root_reach_probability": 1.0,
+      "root_source": "blueprint_public_reach",
+      "public_root_nodes": 7,
+      "rollout_nodes": 0,
+      "rollout_cache_entries": 0,
+      "depth_limit": 3,
+      "continuation_multiplier": 4.0,
+      "continuations": [
+        "blueprint",
+        "fold",
+        "call",
+        "raise"
+      ],
+      "blueprint_fallback_queries": 0,
+      "diagnostics": {
+        "completed_iterations": 600,
+        "total_iterations": 600,
+        "nodes": 66000,
+        "elapsed_seconds": 1.2473941889984417,
+        "stop_reason": "iterations",
+        "information_sets": 12
+      },
+      "elapsed_seconds": 1.2476742610015208,
+      "quality": "conditional_approximate_search",
+      "warnings": [
+        "Finite continuation set and local re-solving do not guarantee a safe global equilibrium.",
+        "Continuation biases preserve blueprint support and cannot revive absent actions."
+      ]
+    },
+    "evaluation": {
+      "policy_values": [
+        -0.055490780711680676,
+        0.055490780711680676
+      ],
+      "best_response_values": [
+        -0.042494691593172866,
+        0.06212559063953568
+      ],
+      "nash_conv": 0.019630899046362817,
+      "exploitability": 0.009815449523181408,
+      "is_zero_sum": true,
+      "nodes": 55,
+      "quality": "exact_finite_game"
+    }
+  },
+  "limits": [
+    "Leduc pruning thresholds are scaled experimental values, not paper parameters",
+    "These are finite-game convergence and plumbing checks, not evidence of real-world poker strength",
+    "No mature Holdem blueprint, target 4-8 player mushroom rules, real-hand training or automatic model promotion is included"
+  ]
+}
