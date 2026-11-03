@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  AnalysisResponseSchema, SessionResponseSchema, EquityResponseSchema,
+  AnalysisResponseSchema, SessionResponseSchema, EquityResponseSchema, GameConfigSchema,
   TrainingJobSchema, BlueprintsResponseSchema,
   ProfilesResponseSchema,
   HandStrengthResponseSchema, AdaptationResponseSchema,
@@ -19,6 +19,29 @@ const analysis = {
   actions: [{ action: "check", frequency: 0.75 }, { action: "bet", frequency: 0.25 }],
   warnings: [], diagnostics: { iterations: 1000 },
 };
+
+test("eight-seat Holdem supports live straddles and observed stack differences", () => {
+  const game = { ...session.game, game_id: "holdem", num_players: 8, button: 3,
+    stacks: [800, 780, 900, 760, 880, 840, 800, 1000], small_blind: 2, big_blind: 4, straddle: 8 };
+  assert.equal(SessionResponseSchema.parse({ ...session, game, actor: 7 }).actor, 7);
+  for (const invalid of [
+    { ...game, game_id: "kuhn" }, { ...game, game_id: "leduc" },
+    { ...game, stacks: [800] }, { ...game, stacks: [800, 800, 800, 800, 800, 800, 7, 800] },
+    { ...game, straddle: 4 }, { ...game, num_players: 3 },
+    { ...game, button: 8 }, { ...game, straddle: true },
+  ]) assert.throws(() => GameConfigSchema.parse(invalid));
+});
+
+test("mushroom simulation declares its training horizon without claiming live coverage", () => {
+  const game = {...session.game, game_id:"mushroom", num_players:8, stack:800,
+    small_blind:2, big_blind:4, straddle:8, session_hands:2};
+  assert.equal(GameConfigSchema.parse(game).session_hands,2);
+  assert.equal(GameConfigSchema.parse({...game, abstraction:"mushroom_context"}).abstraction,"mushroom_context");
+  assert.throws(()=>GameConfigSchema.parse({...session.game, abstraction:"mushroom_context"}));
+  assert.throws(()=>GameConfigSchema.parse({...session.game, game_id:"holdem", abstraction:"mushroom_context"}));
+  for (const change of [{small_blind:1}, {straddle:16}, {num_players:3}, {session_hands:0},
+    {abstraction:"suit_canonical"}]) assert.throws(()=>GameConfigSchema.parse({...game,...change}));
+});
 
 test("simulation snapshots retain opaque observations but validate actionable state", () => {
   assert.deepEqual(SessionResponseSchema.parse(session), session);

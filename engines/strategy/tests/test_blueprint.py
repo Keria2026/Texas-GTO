@@ -16,7 +16,7 @@ def rewrite_checksum(document):
     return {**document, "checksum": hashlib.sha256(encoded).hexdigest()}
 
 
-@pytest.mark.parametrize("algorithm", ["cfr", "mccfr"])
+@pytest.mark.parametrize("algorithm", ["cfr", "mccfr", "pluribus"])
 def test_checkpoint_resume_is_identical_to_continuous_training(tmp_path, algorithm):
     game = KuhnPoker()
     continuous = Trainer(game, algorithm=algorithm, weighting="linear", seed=311)
@@ -119,8 +119,14 @@ def test_wrong_legal_actions_are_caught_by_full_validation_and_query(tmp_path):
     [
         lambda d: d["rng_state"][1].__setitem__(0, -1),
         lambda d: d["rng_state"].__setitem__(0, 2),
-        lambda d: d["entries"][0].update(strategy_sum=[-1, 1]),
-        lambda d: d["entries"][0].update(regrets=[0]),
+        lambda d: d["entries"][0].__setitem__(4, [-1, 1]),
+        lambda d: d["entries"][0].__setitem__(3, [0]),
+        lambda d: d["entries"][0].__setitem__(2, True),
+        lambda d: d["entries"][0].__setitem__(2, 999),
+        lambda d: d["entries"][0].append(0),
+        lambda d: d["action_sets"][0].append("check"),
+        lambda d: d["action_sets"].append(d["action_sets"][0]),
+        lambda d: d.update(training_context="wrong-root"),
     ],
 )
 def test_checkpoint_state_is_strictly_validated(tmp_path, mutation):
@@ -157,3 +163,41 @@ def test_checkpoint_rejects_changed_chance_sampling_contract(tmp_path):
     path.write_text(json.dumps(rewrite_checksum(document)))
     with pytest.raises(ValueError, match="chance sampling"):
         Trainer.load_checkpoint(game, path)
+
+
+@pytest.mark.parametrize("algorithm", ["cfr", "mccfr", "pluribus"])
+def test_legacy_checkpoint_remains_importable_and_compaction_preserves_every_value(
+    tmp_path, algorithm
+):
+    game = KuhnPoker()
+    trainer = Trainer(game, algorithm=algorithm)
+    trainer.train(100)
+    compact, legacy = tmp_path / "compact.json", tmp_path / "legacy.json"
+    trainer.save_checkpoint(compact)
+    document = json.loads(compact.read_text())
+    assert document["schema_version"] == 2
+    actions = document.pop("action_sets")
+    document.pop("training_context")
+    document["schema_version"] = 1
+    document["entries"] = [
+        {
+            "player": row[0],
+            "information_key": row[1],
+            "actions": actions[row[2]],
+            "regrets": row[3],
+            "strategy_sum": row[4],
+            **({"betting_round": row[5]} if algorithm == "pluribus" else {}),
+        }
+        for row in document["entries"]
+    ]
+    legacy.write_text(json.dumps(rewrite_checksum(document), separators=(",", ":")))
+    assert compact.stat().st_size < legacy.stat().st_size
+    first = Trainer.load_checkpoint(game, compact)
+    second = Trainer.load_checkpoint(game, legacy)
+    assert first._table == second._table == trainer._table
+    assert first._rng.getstate() == second._rng.getstate() == trainer._rng.getstate()
+    first.train(10)
+    second.train(10)
+    trainer.train(10)
+    assert first._table == second._table == trainer._table
+    assert first._rng.getstate() == second._rng.getstate() == trainer._rng.getstate()

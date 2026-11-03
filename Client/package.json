@@ -1,0 +1,39 @@
+{
+  "name": "tgto-fronend",
+  "version": "0.6.1",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build:wasm": "cargo build --locked --release --target wasm32-unknown-unknown",
+    "build": "npm run build:wasm && node scripts/build.mjs",
+    "build:fixture": "node scripts/build.mjs --fixture",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/wasm.test.mjs tests/backend-config.test.mjs tests/*.test.ts",
+    "test:browser": "node --test tests/browser.test.mjs",
+    "backend": "node tools/reference-backend.ts",
+    "check": "cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings && cargo test --locked && npm run build && npm run typecheck && npm test && npm run test:provenance && npm run test:browser",
+    "test:python": "node --test --test-concurrency=1 tests/python-backend.integration.mjs tests/python-business.integration.mjs",
+    "test:python:browser": "node --test tests/python-browser.integration.mjs",
+    "test:provenance": "node scripts/check-evidence.mjs && node --test evidence/wpk/offline/test/offline-hands.test.mjs"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/chrome": "0.3.7",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/ws": "8.18.2",
+    "esbuild": "0.28.2",
+    "fake-indexeddb": "6.2.7",
+    "playwright": "1.64.1",
+    "typescript": "7.0.2",
+    "ws": "8.22.1"
+  }
+}

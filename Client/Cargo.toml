@@ -1,0 +1,9 @@
+[workspace]
+members = ["crates/capture-core"]
+resolver = "3"
+
+[profile.release]
+opt-level = "s"
+lto = true
+panic = "abort"
+strip = true

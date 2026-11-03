@@ -5,12 +5,14 @@ import {
   BlueprintsResponseSchema, AnalysisResponseSchema, EquityResponseSchema,
   ProfilesResponseSchema,
   HandStrengthResponseSchema, AdaptationResponseSchema,
+  CoreTrainingResponseSchema,
 } from "../src/index.ts";
 
 const schemas = {
   "health-response": HealthResponseSchema,
   "session-response": SessionResponseSchema,
   "training-job": TrainingJobSchema,
+  "core-training-response": CoreTrainingResponseSchema,
   "blueprints-response": BlueprintsResponseSchema,
   "analysis-response": AnalysisResponseSchema,
   "equity-response": EquityResponseSchema,

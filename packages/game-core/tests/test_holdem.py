@@ -325,7 +325,7 @@ def test_rules_and_seat_validation():
         game.information_key(game.initial_state(), 2)
     with pytest.raises(ValueError, match="settlement"):
         game.terminal_payoffs(game.initial_state())
-    for stacks in ((10,), (10,) * 7, (10, 0), (10, 1.5), (True, 10)):
+    for stacks in ((10,), (10,) * 9, (10, 0), (10, 1.5), (True, 10)):
         with pytest.raises(ValueError):
             HoldemGame(stacks)
 
@@ -360,13 +360,17 @@ def test_sample_chance_is_a_seeded_legal_action():
         game.sample_chance(game.replay([]), random.Random(10))
 
 
-@pytest.mark.parametrize("players", range(2, 7))
+@pytest.mark.parametrize("players", range(2, 9))
 def test_random_legal_play_conserves_chips_and_finishes_for_every_supported_table(players):
     rng = random.Random(712 + players)
     for hand in range(35):
-        game = HoldemGame(
-            tuple(rng.randrange(1, 70) for _ in range(players)), button=hand % players
-        )
+        button = hand % players
+        stacks = [rng.randrange(1, 70) for _ in range(players)]
+        straddle = 8 if players >= 4 and hand % 2 else None
+        if straddle is not None:
+            seat = (button + 3) % players
+            stacks[seat] = max(straddle, stacks[seat])
+        game = HoldemGame(stacks, button=button, straddle=straddle)
         state = game.deal_to_decision(game.initial_state(), rng=rng)
         transitions = 0
         while not state.terminal:
@@ -381,3 +385,70 @@ def test_random_legal_play_conserves_chips_and_finishes_for_every_supported_tabl
         assert sum(game.terminal_payoffs(state)) == 0
         cards = state.board + tuple(card for cards in state.hole_cards for card in cards)
         assert len(cards) == len(set(cards))
+
+
+@pytest.mark.parametrize("players", [4, 7, 8])
+@pytest.mark.parametrize("button", range(8))
+def test_live_straddle_positions_raise_option_and_postflop_minimum(players, button):
+    button %= players
+    game = HoldemGame((800,) * players, small_blind=2, big_blind=4, straddle=8, button=button)
+    state = game.replay([])
+    straddler = (button + 3) % players
+    assert game.straddle_player == straddler
+    assert sum(state.street_bets) == 14
+    assert game.minimum_raise_to(state) == 16
+    assert game.observation(state, straddler)["straddlePlayer"] == straddler
+    for offset in range(1, players):
+        assert game.actor(state) == (straddler + offset) % players
+        state = advance(game, state, "call")
+    assert game.actor(state) == straddler
+    assert "check" in game.legal_actions(state)
+    assert "raise_to:16" in game.legal_actions(state)
+    state = advance(game, state, "raise_to:16")
+    assert state.last_full_raise == 8
+    for _ in range(players - 1):
+        state = advance(game, state, "call")
+    assert state.street_name == "flop"
+    assert game.actor(state) == game.small_blind_player
+    assert game.minimum_raise_to(state) == 4
+    assert sum(state.contributions) == players * 16
+
+
+def test_eight_player_straddle_walk_returns_uncalled_amount():
+    game = HoldemGame((800,) * 8, small_blind=2, big_blind=4, straddle=8)
+    state = game.replay(["fold"] * 7)
+    assert state.terminal
+    assert state.board == ()
+    assert state.returned[3] == 4
+    assert state.stacks == (800, 798, 796, 806, 800, 800, 800, 800)
+    assert state.side_pots[0].winners == (3,)
+    assert sum(game.terminal_payoffs(state)) == 0
+
+
+def test_eight_player_straddle_all_in_tied_main_and_six_side_pots():
+    stacks = (8, 12, 16, 20, 36, 24, 28, 32)
+    game = HoldemGame(stacks, small_blind=2, big_blind=4, straddle=8)
+    board = ("As", "Ks", "Qs", "Js", "Ts")
+    remaining = tuple(card for card in DECK if card not in board)
+    hands = tuple(tuple(remaining[2 * seat : 2 * seat + 2]) for seat in range(8))
+    state = game.replay(["raise_to:36"] + ["call"] * 7, deck=deck_for(hands, board))
+    assert state.terminal
+    assert state.stacks == stacks
+    assert state.returned[4] == 4
+    assert len(state.side_pots) == 7
+    assert state.side_pots[0].amount == 64
+    assert len(state.side_pots[0].winners) == 8
+    game.validate_state(state)
+
+
+@pytest.mark.parametrize("straddle", [True, 4, 0, -1, 8.0])
+def test_invalid_live_straddle_amount_rejected(straddle):
+    with pytest.raises(ValueError, match="straddle"):
+        HoldemGame((800,) * 8, small_blind=2, big_blind=4, straddle=straddle)
+
+
+def test_short_straddle_and_underpopulated_straddle_require_explicit_rules():
+    with pytest.raises(ValueError, match="short straddle"):
+        HoldemGame((800, 800, 800, 7, 800, 800, 800, 800), big_blind=4, straddle=8)
+    with pytest.raises(ValueError, match="4 to 8"):
+        HoldemGame((20,) * 3, straddle=4)

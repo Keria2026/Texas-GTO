@@ -1,9 +1,10 @@
 """Loopback-only research API. Synthetic gameplay and separate TGTO metadata ingestion."""
 
+import asyncio
 import hmac
 import os
-import secrets
-from contextlib import asynccontextmanager
+import re
+from contextlib import asynccontextmanager, nullcontext
 from dataclasses import asdict
 from pathlib import Path
 from threading import BoundedSemaphore
@@ -12,16 +13,19 @@ from uuid import UUID
 from fastapi import FastAPI, HTTPException, Query, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from texas_game_core.cards import estimate_equity
 from texas_game_core.hand_analysis import analyze_hand_strength
 from texas_strategy.adaptation import adapt_strategy
 from texas_strategy.search import ContinuationPolicy
 
+from .core_training import CoreTraining
 from .models import (
     AdaptationRequest,
     AnalysisResponse,
     AnalyzeRequest,
+    CoreTrainingResponse,
     CreateSession,
     EquityRequest,
     HandStrengthRequest,
@@ -35,15 +39,22 @@ from .network_stream import NetworkStore, network_stream
 from .research import QueueFullError, ResearchManager, analyze
 from .storage import ConflictError, SessionStore
 
-DEFAULT_ORIGINS = ("http://127.0.0.1:5173", "http://localhost:5173")
+DEFAULT_ORIGINS = (
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+    "http://127.0.0.1:5174",
+    "http://localhost:5174",
+)
+EXTENSION_ORIGIN = r"chrome-extension://[a-p]{32}"
 MAX_BODY_BYTES = 256 * 1024
 
 
 class LocalBoundary:
     """ASGI boundary checks real streamed bytes, not just Content-Length."""
 
-    def __init__(self, app, *, origins, token):
+    def __init__(self, app, *, origins, token, foreground=None):
         self.app, self.origins, self.token = app, origins, token
+        self.foreground = foreground
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -54,13 +65,22 @@ class LocalBoundary:
         async def reject(status, detail):
             await JSONResponse({"detail": detail}, status_code=status)(scope, receive, send)
 
-        if origin is not None and origin.decode("latin1") not in self.origins:
-            return await reject(403, "Origin is not allowed")
+        if origin is not None:
+            value = origin.decode("latin1")
+            if value not in self.origins and not (
+                self.token is None and re.fullmatch(EXTENSION_ORIGIN, value)
+            ):
+                return await reject(403, "Origin is not allowed")
         public = scope["path"] == "/v1/health" and scope["method"] == "GET"
         if not public and scope["method"] != "OPTIONS":
-            expected = f"Bearer {self.token}".encode()
-            if not hmac.compare_digest(headers.get(b"authorization", b""), expected):
-                return await reject(401, "A valid local bearer token is required")
+            if self.token is None:
+                # A fixed client marker forces browser preflight; it is not a credential.
+                if headers.get(b"x-texas-local") != b"1":
+                    return await reject(403, "Local client header is required")
+            else:
+                expected = f"Bearer {self.token}".encode()
+                if not hmac.compare_digest(headers.get(b"authorization", b""), expected):
+                    return await reject(401, "A valid bearer token is required")
         content_length = headers.get(b"content-length")
         if content_length:
             try:
@@ -95,7 +115,13 @@ class LocalBoundary:
                 message["headers"] = [*message.get("headers", []), (b"cache-control", b"no-store")]
             await send(message)
 
-        await self.app(scope, replay, uncached)
+        activity = (
+            self.foreground()
+            if self.foreground is not None and scope["method"] in ("POST", "DELETE")
+            else nullcontext()
+        )
+        with activity:
+            await self.app(scope, replay, uncached)
 
 
 def create_app(
@@ -103,6 +129,7 @@ def create_app(
     *,
     token: str | None = None,
     data_dir: str | Path | None = None,
+    auto_train: bool | None = None,
 ) -> FastAPI:
     if allowed_origins is None:
         configured = os.getenv("TEXAS_ALLOWED_ORIGINS")
@@ -113,10 +140,18 @@ def create_app(
         )
     if any("*" in origin or origin == "null" for origin in allowed_origins):
         raise ValueError("Origins must be explicit; wildcards and null are not allowed")
-    token = token or os.getenv("TEXAS_API_TOKEN") or secrets.token_urlsafe(32)
-    if len(token) < 24 or not token.isascii() or any(c.isspace() for c in token):
+    token = token if token is not None else os.getenv("TEXAS_API_TOKEN") or None
+    if token is not None and (
+        len(token) < 24 or not token.isascii() or any(c.isspace() for c in token)
+    ):
         raise ValueError("Local token must contain at least 24 ASCII characters without whitespace")
     directory = Path(data_dir or os.getenv("TEXAS_DATA_DIR", "artifacts/local"))
+    if auto_train is None:
+        configured = os.getenv("TEXAS_AUTO_TRAIN", "1")
+        if configured not in ("0", "1"):
+            raise ValueError("TEXAS_AUTO_TRAIN must be 0 or 1")
+        auto_train = configured == "1"
+    core = CoreTraining(directory / "core", enabled=auto_train)
     resources = {}
     capture_resources = {}
     resource_lock = BoundedSemaphore(1)
@@ -139,15 +174,27 @@ def create_app(
         with resource_lock:
             if "business" not in capture_resources:
                 capture_resources["business"] = NetworkStore(
-                    directory / "capture.sqlite3", stream="capture"
+                    directory / "capture.sqlite3",
+                    stream="capture",
+                    policy_path=directory / "core" / "training.sqlite3",
                 )
         return capture_resources["business"]
 
     @asynccontextmanager
     async def lifespan(app):
-        yield
-        if resources:
-            resources["manager"].close()
+        core.start()
+        supervisor = asyncio.create_task(
+            core.supervise(
+                lambda: "manager" in resources and resources["manager"].has_active_jobs()
+            )
+        )
+        try:
+            yield
+        finally:
+            await asyncio.to_thread(core.close)
+            await supervisor
+            if resources:
+                resources["manager"].close()
 
     app = FastAPI(
         title="Texas GTO Offline Research",
@@ -157,12 +204,18 @@ def create_app(
         openapi_url=None,
         lifespan=lifespan,
     )
-    app.add_middleware(LocalBoundary, origins=allowed_origins, token=token)
+    app.state.core_training = core
+    app.add_middleware(
+        LocalBoundary, origins=allowed_origins, token=token, foreground=core.foreground
+    )
+    if token is None:
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "[::1]"])
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(allowed_origins),
+        allow_origin_regex=EXTENSION_ORIGIN if token is None else None,
         allow_methods=["GET", "POST", "DELETE"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_headers=["Authorization", "Content-Type", "X-Texas-Local"],
         allow_credentials=False,
     )
 
@@ -190,18 +243,23 @@ def create_app(
             token=token,
             get_store=get_network_store,
             get_capture_store=get_capture_store,
+            foreground=core.foreground,
         )
 
     @app.get("/v1/health", response_model=HealthResponse)
     def health():
         return HealthResponse()
 
+    @app.get("/v1/core-training", response_model=CoreTrainingResponse)
+    def core_training():
+        return core.status()
+
     @app.post("/v1/sessions", response_model=SessionResponse)
     def create_session(request: CreateSession):
         return get_resources()[0].create(request)
 
     @app.get("/v1/sessions/{session_id}", response_model=SessionResponse)
-    def session(session_id: UUID, viewer: int | None = Query(default=None, ge=0, le=5)):
+    def session(session_id: UUID, viewer: int | None = Query(default=None, ge=0, le=7)):
         return get_resources()[0].snapshot(str(session_id), viewer)
 
     @app.post("/v1/sessions/{session_id}/actions", response_model=SessionResponse)

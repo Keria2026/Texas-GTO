@@ -6,6 +6,6 @@
   "strategy": {
     "provider": "pluribus_style",
     "status": "research_ready",
-    "supported_games": ["kuhn", "leduc", "holdem"]
+    "supported_games": ["kuhn", "leduc", "holdem", "mushroom"]
   }
 }

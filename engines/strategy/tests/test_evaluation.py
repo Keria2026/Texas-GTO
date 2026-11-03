@@ -5,6 +5,7 @@ from itertools import product
 import pytest
 
 from texas_game_core.kuhn import KuhnPoker
+from texas_strategy.cfr import Trainer
 from texas_strategy.evaluation import (
     EvaluationLimitError,
     best_response,
@@ -63,6 +64,93 @@ class HiddenGuess:
     def terminal_payoffs(self, state):
         reward = float(state[0] == state[1])
         return reward, -reward
+
+
+class PointDecision(HiddenGuess):
+    """Hand-calculated fixed-response cases, not a live poker/opponent model."""
+
+    final_betting_round = 0
+
+    def __init__(self, outcomes, payoffs, past_loss=0):
+        self.outcomes = outcomes
+        self.payoffs = payoffs
+        self.past_loss = past_loss
+
+    def chance_outcomes(self, state):
+        return self.outcomes
+
+    def legal_actions(self, state):
+        return tuple(self.payoffs)
+
+    def information_key(self, state, player):
+        return "hidden-opponent-range"
+
+    def betting_round(self, state):
+        return 0
+
+    def active_players(self, state):
+        return (0, 1)
+
+    def terminal_payoffs(self, state):
+        reward = self.payoffs[state[1]][state[0]] - self.past_loss
+        return reward, -reward
+
+
+@pytest.mark.parametrize(
+    ("outcomes", "expected_action", "expected_value"),
+    [
+        ((("fold", 0.2), ("pay_50", 0.6), ("pay_100", 0.2)), "bet:50", 90),
+        ((("fold", 0.2), ("pay_50", 0.0), ("pay_100", 0.8)), "bet:100", 130),
+    ],
+)
+def test_value_size_optimizes_points_against_conditional_payment_not_largest_bet(
+    outcomes, expected_action, expected_value
+):
+    # Pot 100 includes our 50; we beat this entire range. No later raise or fee.
+    game = PointDecision(
+        outcomes,
+        {
+            "check": {"fold": 50, "pay_50": 50, "pay_100": 50},
+            "bet:50": {"fold": 50, "pay_50": 100, "pay_100": 100},
+            "bet:100": {"fold": 50, "pay_50": 50, "pay_100": 150},
+        },
+    )
+    response = best_response(game, UniformPolicy(), 0)
+    assert response.actions == {"hidden-opponent-range": expected_action}
+    assert response.value == pytest.approx(expected_value)
+    trainer = Trainer(game, algorithm="pluribus", seed=42)
+    assert trainer.train(3000).completed_iterations == 3000
+    policy = trainer.average_policy(missing="error")
+    for world, _ in outcomes:
+        probabilities = policy.probabilities(game, (world,))
+        assert probabilities[game.legal_actions((world,)).index(expected_action)] > 0.9
+    assert evaluate_policy(game, policy)[0] == pytest.approx(expected_value, abs=2)
+
+
+@pytest.mark.parametrize(("cost", "choice", "gain"), [(20, "call", 10), (50, "fold", 0)])
+@pytest.mark.parametrize("past_loss", [0, 400])
+def test_range_conditioned_call_compares_future_net_points_and_ignores_sunk_cost(
+    cost, choice, gain, past_loss
+):
+    # P=100, e=.25, closing call: .25*(100+C)-C; our 30 is already in the pot.
+    game = PointDecision(
+        (("ahead", 0.25), ("behind", 0.75)),
+        {
+            "fold": {"ahead": -30, "behind": -30},
+            "call": {"ahead": 70, "behind": -30 - cost},
+        },
+        past_loss,
+    )
+    response = best_response(game, UniformPolicy(), 0)
+    assert response.actions == {"hidden-opponent-range": choice}
+    assert response.value == pytest.approx(-30 - past_loss + gain)
+    trainer = Trainer(game, algorithm="pluribus", seed=42)
+    assert trainer.train(3000).completed_iterations == 3000
+    policy = trainer.average_policy(missing="error")
+    for world, _ in game.outcomes:
+        probabilities = policy.probabilities(game, (world,))
+        assert probabilities[game.legal_actions((world,)).index(choice)] > 0.9
+    assert evaluate_policy(game, policy)[0] == pytest.approx(response.value, abs=2)
 
 
 def test_known_kuhn_equilibrium_has_value_minus_one_eighteenth_and_zero_exploitability():

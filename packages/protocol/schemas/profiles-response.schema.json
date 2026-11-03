@@ -28,7 +28,7 @@
     },
     "players": {
       "minItems": 2,
-      "maxItems": 6,
+      "maxItems": 8,
       "type": "array",
       "items": {
         "type": "object",
@@ -40,7 +40,7 @@
           "seat": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 5
+            "maximum": 7
           },
           "statistics": {
             "type": "object",

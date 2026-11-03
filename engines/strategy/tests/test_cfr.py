@@ -11,7 +11,9 @@ from texas_strategy.evaluation import evaluate_strategy
 from texas_strategy.policy import PolicyEntry, TabularPolicy
 
 
-@pytest.mark.parametrize("algorithm,iterations", [("cfr", 1500), ("mccfr", 8000)])
+@pytest.mark.parametrize(
+    "algorithm,iterations", [("cfr", 1500), ("mccfr", 8000), ("pluribus", 8000)]
+)
 def test_kuhn_converges_against_independent_best_response(algorithm, iterations):
     game = KuhnPoker()
     trainer = Trainer(game, algorithm=algorithm, weighting="linear", seed=42)
@@ -114,7 +116,7 @@ def test_external_sampling_estimates_exact_regrets_and_own_reach_averages():
         assert sums[key] == pytest.approx(regrets + entry.strategy_sum, abs=0.035)
 
 
-@pytest.mark.parametrize("algorithm", ["cfr", "mccfr"])
+@pytest.mark.parametrize("algorithm", ["cfr", "mccfr", "pluribus"])
 def test_node_abort_is_atomic_and_rewinds_rng(algorithm):
     baseline = Trainer(KuhnPoker(), algorithm=algorithm, seed=19)
     interrupted = Trainer(KuhnPoker(), algorithm=algorithm, seed=19)

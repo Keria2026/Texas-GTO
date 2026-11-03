@@ -1,0 +1,280 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "source_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "sequence": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    },
+    "table_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "hand_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "hero_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "street": {
+      "type": "string",
+      "enum": [
+        "preflop",
+        "flop",
+        "turn",
+        "river",
+        "showdown",
+        "between_hands",
+        "unknown"
+      ]
+    },
+    "hero_cards": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[2-9TJQKA][cdhs]$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[2-9TJQKA][cdhs]$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "board": {
+      "maxItems": 5,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[2-9TJQKA][cdhs]$"
+      }
+    },
+    "players": {
+      "minItems": 1,
+      "maxItems": 8,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "player_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "seat": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
+          },
+          "stack": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "player_id",
+          "seat",
+          "stack"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "actions": {
+      "maxItems": 256,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_event_id": {
+            "type": "string",
+            "pattern": "^[0-9]{1,16}$"
+          },
+          "player_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "PAY_MUSHROOM",
+              "SMALL_BLIND",
+              "BIG_BLIND",
+              "THIRD_BLIND",
+              "ANTE",
+              "BET",
+              "RAISE",
+              "CALL",
+              "ALL_IN",
+              "FOLD",
+              "CHECK"
+            ]
+          },
+          "amount_delta": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "amount_to": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_round": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "source_event_id",
+          "player_id",
+          "action",
+          "amount_delta",
+          "amount_to",
+          "source_round"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "to_act_player_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "legal_actions": {
+      "maxItems": 6,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "FOLD",
+          "RAISE",
+          "ALL_IN",
+          "CALL",
+          "CHECK",
+          "BET"
+        ]
+      }
+    },
+    "call_amount": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "min_raise_reported": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "max_raise_reported": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "history_complete": {
+      "type": "boolean"
+    },
+    "rules_version": {
+      "type": "string",
+      "const": "wpk-observed-unverified-v1"
+    }
+  },
+  "required": [
+    "source_id",
+    "sequence",
+    "table_id",
+    "hand_id",
+    "hero_id",
+    "street",
+    "hero_cards",
+    "board",
+    "players",
+    "actions",
+    "to_act_player_id",
+    "legal_actions",
+    "call_amount",
+    "min_raise_reported",
+    "max_raise_reported",
+    "history_complete",
+    "rules_version"
+  ],
+  "additionalProperties": false
+}

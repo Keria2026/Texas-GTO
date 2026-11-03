@@ -72,9 +72,11 @@ class HoldemState:
 
 
 class HoldemGame:
-    """2–6 seats, fixed starting stacks/button and a finite action abstraction.
+    """2–8 seats, fixed starting stacks/button and a finite action abstraction.
 
-    There are no antes, rake, straddles, burns or mushroom rewards. Omitting burn
+    A configured live straddle is posted left of the big blind (4–8 seats).
+    Short straddles are rejected until the target table's policy is confirmed.
+    There are no antes, rake, re-straddles, burns or mushroom rewards. Omitting burn
     cards preserves the distribution of visible cards in a shuffled deck. A
     short big blind does not lower the preflop bring-in while two funded players
     can still contest it. Odd chips go clockwise from the seat left of the
@@ -83,6 +85,10 @@ class HoldemGame:
 
     game_id = "holdem"
     supports_exact_enumeration = False
+    final_betting_round = 3
+
+    def betting_round(self, state: HoldemState) -> int:
+        return state.street
 
     def __init__(
         self,
@@ -90,12 +96,13 @@ class HoldemGame:
         *,
         small_blind: int = 1,
         big_blind: int = 2,
+        straddle: int | None = None,
         button: int = 0,
         bet_fractions: Sequence[float] = (0.5, 1.0),
     ) -> None:
         self.initial_stacks = tuple(stacks)
-        if not 2 <= len(self.initial_stacks) <= 6:
-            raise ValueError("Hold'em requires 2 to 6 players")
+        if not 2 <= len(self.initial_stacks) <= 8:
+            raise ValueError("Hold'em requires 2 to 8 players")
         if any(type(value) is not int or value <= 0 for value in self.initial_stacks):
             raise ValueError("starting stacks must be positive integer chips")
         if (
@@ -106,12 +113,19 @@ class HoldemGame:
             raise ValueError("blinds must be positive integers with small_blind <= big_blind")
         if type(button) is not int or not 0 <= button < self.num_players:
             raise ValueError("button is outside the table")
+        if straddle is not None and (
+            type(straddle) is not int or straddle <= big_blind or self.num_players < 4
+        ):
+            raise ValueError("live straddle requires 4 to 8 players and an integer above big_blind")
         fractions = tuple(float(value) for value in bet_fractions)
         if any(not math.isfinite(value) or value <= 0 for value in fractions):
             raise ValueError("bet fractions must be positive and finite")
         self.small_blind = small_blind
         self.big_blind = big_blind
         self.button = button
+        self.straddle = straddle
+        if straddle is not None and self.initial_stacks[self.straddle_player] < straddle:
+            raise ValueError("short straddle is unsupported; require a fully funded straddle")
         self.bet_fractions = tuple(sorted(set(fractions)))
         self.rules_version = "holdem-nl-v1:" + json.dumps(
             {
@@ -121,6 +135,7 @@ class HoldemGame:
                 "button": button,
                 "betFractions": self.bet_fractions,
                 "rake": 0,
+                **({"straddle": straddle} if straddle is not None else {}),
             },
             sort_keys=True,
             separators=(",", ":"),
@@ -138,6 +153,10 @@ class HoldemGame:
     def big_blind_player(self) -> int:
         return (self.small_blind_player + 1) % self.num_players
 
+    @property
+    def straddle_player(self) -> int | None:
+        return (self.big_blind_player + 1) % self.num_players if self.straddle is not None else None
+
     def _clockwise(self, start: int) -> tuple[int, ...]:
         return tuple((start + offset) % self.num_players for offset in range(self.num_players))
 
@@ -150,6 +169,9 @@ class HoldemGame:
         ):
             bets[player] = min(blind, stacks[player])
             stacks[player] -= bets[player]
+        if self.straddle is not None:
+            bets[self.straddle_player] = self.straddle
+            stacks[self.straddle_player] -= self.straddle
         # Two rounds clockwise from left of button, with private single-card
         # chance events. No enormous combination-valued chance outcome list.
         deal_order = self._clockwise((self.button + 1) % self.num_players)
@@ -158,6 +180,9 @@ class HoldemGame:
             if self.num_players == 2
             else (self.big_blind_player + 1) % self.num_players
         )
+        if self.straddle is not None:
+            first = (self.straddle_player + 1) % self.num_players
+        opening_bet = self.straddle if self.straddle is not None else self.big_blind
         return HoldemState(
             rules_version=self.rules_version,
             stacks=tuple(stacks),
@@ -167,8 +192,8 @@ class HoldemGame:
             board=(),
             folded=(False,) * self.num_players,
             street=0,
-            current_bet=self.big_blind,
-            last_full_raise=self.big_blind,
+            current_bet=opening_bet,
+            last_full_raise=opening_bet,
             acted_to=(None,) * self.num_players,
             pending=self._clockwise(first),
             pending_deal=deal_order * 2,
@@ -645,6 +670,8 @@ class HoldemGame:
             "button": self.button,
             "smallBlindPlayer": self.small_blind_player,
             "bigBlindPlayer": self.big_blind_player,
+            "straddlePlayer": self.straddle_player,
+            "straddle": self.straddle,
             "pot": state.pot,
             "currentBet": state.current_bet,
             "toAct": actor,

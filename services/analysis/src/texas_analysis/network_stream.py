@@ -5,9 +5,10 @@ import hmac
 import json
 import re
 import sqlite3
-from contextlib import closing
+from contextlib import closing, nullcontext
 from datetime import datetime
 from pathlib import Path
+from threading import Event
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
@@ -15,6 +16,9 @@ from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 from starlette.concurrency import run_in_threadpool
 
+from texas_strategy.evaluation import CancellationError
+
+from . import capture_learning
 from .capture_contract import (
     CAPABILITY as BUSINESS_CAPABILITY,
 )
@@ -24,15 +28,22 @@ from .capture_contract import (
 from .capture_contract import (
     STATE_CAPABILITY,
     BusinessBatch,
+    BusinessEvent,
 )
+from .capture_ledger import derive_mushroom_ledger
+from .capture_recommendation import CAPABILITY as RECOMMENDATIONS_CAPABILITY
+from .capture_recommendation import recommend
+from .capture_replay import ReplayUnavailable, replay_capture
 from .capture_state import reduce_event
 from .capture_state import response as capture_response
 
 SCHEMA = "tgto.network/0.1"
 STATUS_SCHEMA = "tgto.network-status/0.1"
+PROFILES_CAPABILITY = "capture_profiles_v1"
 CAPABILITY = "network_events_v1"
 STATUS_CAPABILITY = "network_status_v1"
 MAX_MESSAGE = 256 * 1024
+MAX_REPLAY_EVENTS = 4096
 MAX_U64 = (1 << 64) - 1
 Source = Annotated[str, Field(pattern=r"^[a-zA-Z0-9-]{1,80}$")]
 Short = Annotated[str, Field(max_length=512)]
@@ -133,9 +144,17 @@ class NetworkBatch(StrictModel):
 
 class StreamAuth(StrictModel):
     type: Literal["auth"]
-    token: Annotated[str, Field(min_length=1, max_length=4096)]
+    token: Annotated[str, Field(max_length=4096)] = ""
     capabilities: Annotated[
-        list[Literal["network_status_v1", "capture_state_v1"]], Field(max_length=2)
+        list[
+            Literal[
+                "network_status_v1",
+                "capture_state_v1",
+                "capture_profiles_v1",
+                "capture_recommendations_v1",
+            ]
+        ],
+        Field(max_length=4),
     ] = []
 
 
@@ -147,11 +166,18 @@ class NetworkStore:
     """
 
     def __init__(
-        self, path: Path, *, max_bytes=256 * 1024 * 1024, max_sources=256, stream="network"
+        self,
+        path: Path,
+        *,
+        max_bytes=256 * 1024 * 1024,
+        max_sources=256,
+        stream="network",
+        policy_path=None,
     ):
         if stream not in ("network", "capture"):
             raise ValueError("Unknown stream")
         self.stream = stream
+        self.policy_path = policy_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch(mode=0o600, exist_ok=True)
         path.chmod(0o600)
@@ -172,6 +198,28 @@ class NetworkStore:
                     "source TEXT NOT NULL, sequence TEXT NOT NULL, body TEXT NOT NULL, "
                     "PRIMARY KEY(origin,source))"
                 )
+                with db:
+                    db.execute("BEGIN IMMEDIATE")
+                    capture_learning.initialize(db)
+                    self._restore_learning(db)
+
+    def _restore_learning(self, db):
+        for origin, source, head in db.execute("SELECT origin,source,sequence FROM capture_heads"):
+            learned = db.execute(
+                "SELECT sequence FROM capture_learning_heads WHERE origin=? AND source=?",
+                (origin, source),
+            ).fetchone()
+            if learned and int(learned[0]) == int(head):
+                continue
+            projection = None
+            for (body,) in db.execute(
+                "SELECT body FROM capture_events WHERE origin=? AND source=? ORDER BY sequence",
+                (origin, source),
+            ):
+                event = BusinessEvent.model_validate_json(body)
+                before = projection
+                projection = reduce_event(projection, event)
+                capture_learning.observe(db, origin, event, before, projection)
 
     def connect(self):
         db = sqlite3.connect(self.path, timeout=5)
@@ -227,7 +275,9 @@ class NetworkStore:
                     raise ValueError("Capture storage quota exceeded")
                 db.execute(f"INSERT INTO {self.stream}_events VALUES(?,?,?,?)", (*key, body))
                 if self.stream == "capture":
+                    before = projection
                     projection = reduce_event(projection, event)
+                    capture_learning.observe(db, origin, event, before, projection)
                 last += 1
             db.execute(
                 f"INSERT INTO {self.stream}_heads VALUES(?,?,?,?) ON CONFLICT(origin,source) "
@@ -248,12 +298,120 @@ class NetworkStore:
         return batch.events[-1].sequence
 
     def state(self, origin: str, source: str):
-        with closing(self.connect()) as db:
+        observed = self._observation(origin, source)
+        if observed is None:
+            return None
+        through, state, prefix = observed
+        return self._state_response(source, through, state, prefix)
+
+    def _observation(self, origin, source):
+        with closing(self.connect()) as db, db:
+            db.execute("BEGIN")
             row = db.execute(
                 "SELECT sequence,body FROM capture_state WHERE origin=? AND source=?",
                 (origin, source),
             ).fetchone()
-        return capture_response(source, row[0], json.loads(row[1])) if row else None
+            if row is None:
+                return None
+            state = json.loads(row[1])
+            prefix = self._public_hand_prefix(db, origin, source, row[0], state)
+        return row[0], state, prefix
+
+    def recommendation(self, origin, source, should_cancel=None):
+        observed = self._observation(origin, source)
+        if observed is None:
+            return None
+        through, state, prefix = observed
+        result = recommend(
+            source=source,
+            through=through,
+            state=state,
+            prefix=prefix,
+            policy_path=self.policy_path,
+            should_cancel=should_cancel,
+        )
+        # Another connection may commit while the pinned model is being queried.
+        with closing(self.connect()) as db:
+            current = db.execute(
+                "SELECT sequence FROM capture_state WHERE origin=? AND source=?", (origin, source)
+            ).fetchone()
+        return result if current is not None and current[0] == through else None
+
+    @staticmethod
+    def _state_response(source, through, state, prefix):
+        verified = ledger_verified = False
+        if prefix:
+            try:
+                replay = replay_capture(prefix)
+                verified = True
+            except ReplayUnavailable:
+                pass
+            else:
+                try:
+                    derive_mushroom_ledger(
+                        hand_id=state["hand_id"],
+                        fees=replay.fees,
+                        settlements=state["settlements"],
+                    )
+                    ledger_verified = True
+                except ValueError:
+                    pass
+        result = capture_response(
+            source,
+            through,
+            state,
+            public_hand_verified=verified,
+            ledger_verified=ledger_verified,
+        )
+        if prefix and not verified:
+            result["analysis"]["missing_fields"].append("public_betting_replay")
+        return result
+
+    @staticmethod
+    def _public_hand_prefix(db, origin, source, through, state):
+        if (
+            not state["history_complete"]
+            or state["gap"]
+            or state["closed"]
+            or state["street"] not in ("preflop", "flop", "turn", "river")
+            or not 4 <= len(state["players"]) <= 8
+        ):
+            return []
+        head = through.zfill(20)
+        start = db.execute(
+            "SELECT sequence FROM capture_events WHERE origin=? AND source=? AND sequence<=? "
+            "AND json_extract(body,'$.kind')='hand_started' "
+            "AND json_extract(body,'$.hand_id')=? ORDER BY sequence DESC LIMIT 1",
+            (origin, source, head, state["hand_id"]),
+        ).fetchone()
+        if start is None:
+            return []
+        rows = db.execute(
+            "SELECT body FROM capture_events WHERE origin=? AND source=? "
+            "AND sequence>=? AND sequence<=? ORDER BY sequence LIMIT ?",
+            (origin, source, start[0], head, MAX_REPLAY_EVENTS + 1),
+        ).fetchall()
+        # Never truncate a long hand and call its remaining history complete.
+        if len(rows) > MAX_REPLAY_EVENTS:
+            return []
+        return [json.loads(body) for (body,) in rows]
+
+    def profiles(self, origin: str, source: str):
+        with closing(self.connect()) as db, db:
+            db.execute("BEGIN")
+            row = db.execute(
+                "SELECT sequence,body FROM capture_state WHERE origin=? AND source=?",
+                (origin, source),
+            ).fetchone()
+            if row is None:
+                return None
+            state = json.loads(row[1])
+            result = capture_learning.profiles(
+                db, origin, source, player_ids=[p["player_id"] for p in state["players"]]
+            )
+            if result["through_sequence"] != row[0]:
+                raise ValueError("Learning state is behind captured state")
+            return {"schema": "tgto.capture-profiles/0.1", "type": "capture.profiles", **result}
 
 
 def blocked_status(source: str, through: str) -> dict:
@@ -282,15 +440,20 @@ async def receive_json(ws: WebSocket, timeout: float) -> dict:
     return value
 
 
-async def network_stream(ws: WebSocket, *, origins, token: str, get_store, get_capture_store):
+async def network_stream(
+    ws: WebSocket, *, origins, token: str | None, get_store, get_capture_store, foreground=None
+):
     origin = ws.headers.get("origin", "")
-    if origin not in origins or not re.fullmatch(r"chrome-extension://[a-p]{32}", origin):
+    if (token is not None and origin not in origins) or not re.fullmatch(
+        r"chrome-extension://[a-p]{32}", origin
+    ):
         await ws.close(code=4403)
         return
     await ws.accept()
+    incoming = calculation = cancelled = pending = None
     try:
         auth = StreamAuth.model_validate(await receive_json(ws, 5))
-        if not hmac.compare_digest(auth.token.encode(), token.encode()):
+        if token is not None and not hmac.compare_digest(auth.token.encode(), token.encode()):
             await ws.close(code=4401)
             return
         await ws.send_json(
@@ -302,44 +465,91 @@ async def network_stream(ws: WebSocket, *, origins, token: str, get_store, get_c
                     STATUS_CAPABILITY,
                     BUSINESS_CAPABILITY,
                     STATE_CAPABILITY,
+                    PROFILES_CAPABILITY,
+                    RECOMMENDATIONS_CAPABILITY,
                 ],
             }
         )
         store = await run_in_threadpool(get_store)
         capture_store = await run_in_threadpool(get_capture_store)
+
+        async def calculate(source, stop):
+            with foreground() if foreground is not None else nullcontext():
+                try:
+                    return await run_in_threadpool(
+                        capture_store.recommendation, origin, source, stop.is_set
+                    )
+                except CancellationError:
+                    return None
+
+        incoming = asyncio.create_task(receive_json(ws, 60))
         while True:
-            message = await receive_json(ws, 60)
-            if message == {"type": "ping"}:
-                await ws.send_json({"type": "pong"})
-                continue
-            if message.get("type") == "capture.append":
-                batch = BusinessBatch.model_validate(message)
-                through = await run_in_threadpool(capture_store.append, origin, batch)
-                await ws.send_json(
-                    {
-                        "schema": BUSINESS_SCHEMA,
-                        "type": "capture.ack",
-                        "source_id": batch.source_id,
-                        "through_sequence": through,
-                    }
-                )
-                if STATE_CAPABILITY in auth.capabilities:
-                    state = await run_in_threadpool(capture_store.state, origin, batch.source_id)
-                    if state and state["through_sequence"] == through:
-                        await ws.send_json(state)
-                continue
-            batch = NetworkBatch.model_validate(message)
-            through = await run_in_threadpool(store.append, origin, batch)
-            await ws.send_json(
-                {
-                    "schema": SCHEMA,
-                    "type": "network.ack",
-                    "source_id": batch.source_id,
-                    "through_sequence": through,
-                }
+            if calculation is None and pending is not None:
+                requested_source, requested_through = pending
+                pending, cancelled = None, Event()
+                calculation = asyncio.create_task(calculate(requested_source, cancelled))
+            done, _ = await asyncio.wait(
+                [incoming] + ([calculation] if calculation is not None else []),
+                return_when=asyncio.FIRST_COMPLETED,
             )
-            if STATUS_CAPABILITY in auth.capabilities:
-                await ws.send_json(blocked_status(batch.source_id, through))
+            # Incoming changes win over a computation that finished at the same time.
+            if incoming in done:
+                message = incoming.result()
+                incoming = asyncio.create_task(receive_json(ws, 60))
+                if message == {"type": "ping"}:
+                    await ws.send_json({"type": "pong"})
+                elif message.get("type") == "capture.append":
+                    batch = BusinessBatch.model_validate(message)
+                    if cancelled is not None:
+                        cancelled.set()
+                    pending = None
+                    with foreground() if foreground is not None else nullcontext():
+                        through = await run_in_threadpool(capture_store.append, origin, batch)
+                        await ws.send_json(
+                            {
+                                "schema": BUSINESS_SCHEMA,
+                                "type": "capture.ack",
+                                "source_id": batch.source_id,
+                                "through_sequence": through,
+                            }
+                        )
+                        if STATE_CAPABILITY in auth.capabilities:
+                            state = await run_in_threadpool(
+                                capture_store.state, origin, batch.source_id
+                            )
+                            if state and state["through_sequence"] == through:
+                                await ws.send_json(state)
+                        if PROFILES_CAPABILITY in auth.capabilities:
+                            profiles = await run_in_threadpool(
+                                capture_store.profiles, origin, batch.source_id
+                            )
+                            if profiles and profiles["through_sequence"] == through:
+                                await ws.send_json(profiles)
+                        if RECOMMENDATIONS_CAPABILITY in auth.capabilities:
+                            pending = batch.source_id, through
+                else:
+                    batch = NetworkBatch.model_validate(message)
+                    through = await run_in_threadpool(store.append, origin, batch)
+                    await ws.send_json(
+                        {
+                            "schema": SCHEMA,
+                            "type": "network.ack",
+                            "source_id": batch.source_id,
+                            "through_sequence": through,
+                        }
+                    )
+                    if STATUS_CAPABILITY in auth.capabilities:
+                        await ws.send_json(blocked_status(batch.source_id, through))
+            if calculation in done:
+                result = calculation.result()
+                calculation = None
+                if (
+                    not cancelled.is_set()
+                    and result
+                    and (result["source_id"], result["through_sequence"])
+                    == (requested_source, requested_through)
+                ):
+                    await ws.send_json(result)
     except WebSocketDisconnect:
         pass
     except TimeoutError:
@@ -350,3 +560,13 @@ async def network_stream(ws: WebSocket, *, origins, token: str, get_store, get_c
     except (sqlite3.Error, OSError):
         # No ACK on a failed commit; the client retains and retries its outbox.
         await ws.close(code=1011, reason="Storage unavailable")
+    finally:
+        if cancelled is not None:
+            cancelled.set()
+        if incoming is not None:
+            incoming.cancel()
+        # A cancelled await does not stop a worker thread; keep it owned until it exits.
+        await asyncio.gather(
+            *(task for task in (incoming, calculation) if task is not None),
+            return_exceptions=True,
+        )

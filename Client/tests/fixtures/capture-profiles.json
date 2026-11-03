@@ -1,0 +1,27 @@
+{
+  "schema": "tgto.capture-profiles/0.1",
+  "type": "capture.profiles",
+  "source_id": "synthetic-profiles",
+  "through_sequence": "1",
+  "identity_scope": "origin_source",
+  "quality": "observed_behavior_learning",
+  "players": [
+    {
+      "player_id": "hero",
+      "action_observations": 3,
+      "contexts": [
+        {
+          "street": "preflop",
+          "quality": "complete_observed_history",
+          "observations": 3,
+          "counts": {"FOLD": 0, "CHECK": 0, "CALL": 2, "BET": 0, "RAISE": 1, "ALL_IN": 0},
+          "frequencies": {"FOLD": 0, "CHECK": 0, "CALL": 0.6666666666666666, "BET": 0, "RAISE": 0.3333333333333333, "ALL_IN": 0},
+          "posterior_probabilities": {"FOLD": 0.1111111111111111, "CHECK": 0.1111111111111111, "CALL": 0.3333333333333333, "BET": 0.1111111111111111, "RAISE": 0.2222222222222222, "ALL_IN": 0.1111111111111111},
+          "prior_per_action": 1.0
+        }
+      ]
+    },
+    {"player_id": "player-1", "action_observations": 0, "contexts": []}
+  ],
+  "warnings": ["样本数量有限，仅代表本次采集。"]
+}

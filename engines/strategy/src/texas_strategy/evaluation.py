@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 import random
 import time
-from collections.abc import Hashable, Sequence
+from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass, field
 from statistics import stdev
 from typing import Any
@@ -22,14 +22,21 @@ class EvaluationLimitError(RuntimeError):
     """The requested complete calculation did not fit the declared budget."""
 
 
+class CancellationError(RuntimeError):
+    """The caller cancelled; this is not a budget failure eligible for fallback."""
+
+
 @dataclass(slots=True)
 class TraversalBudget:
     max_nodes: int = 250_000
     deadline_seconds: float | None = None
+    should_cancel: Callable[[], bool] | None = None
     nodes: int = field(init=False, default=0)
     started: float = field(init=False, default_factory=time.monotonic)
 
     def __post_init__(self) -> None:
+        if self.should_cancel is not None and not callable(self.should_cancel):
+            raise ValueError("should_cancel must be callable")
         if isinstance(self.max_nodes, bool) or self.max_nodes < 1:
             raise ValueError("max_nodes must be a positive integer")
         if not isinstance(self.max_nodes, int):
@@ -40,6 +47,8 @@ class TraversalBudget:
             raise ValueError("deadline_seconds must be positive and finite")
 
     def check_time(self) -> None:
+        if self.should_cancel is not None and self.should_cancel():
+            raise CancellationError("Calculation cancelled; no result available")
         if (
             self.deadline_seconds is not None
             and time.monotonic() - self.started >= self.deadline_seconds
@@ -123,6 +132,7 @@ def evaluate_policy(
     max_nodes: int = 250_000,
     deadline_seconds: float | None = None,
     budget: TraversalBudget | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> tuple[float, ...]:
     """Return exact on-policy values, optionally from a specified underlying state.
 
@@ -132,7 +142,9 @@ def evaluate_policy(
     """
     if start_state is None and getattr(game, "supports_exact_enumeration", True) is False:
         raise EvaluationLimitError("this game does not support full-tree exact enumeration")
-    budget = budget or TraversalBudget(max_nodes, deadline_seconds)
+    if budget is not None and should_cancel is not None:
+        raise ValueError("Supply cancellation through the shared budget")
+    budget = budget or TraversalBudget(max_nodes, deadline_seconds, should_cancel)
     observed: dict = {}
 
     def visit(state: Any) -> tuple[float, ...]:
@@ -150,7 +162,9 @@ def evaluate_policy(
             math.fsum(p * value[i] for p, value in children) for i in range(game.num_players)
         )
 
-    return visit(game.initial_state() if start_state is None else start_state)
+    result = visit(game.initial_state() if start_state is None else start_state)
+    budget.check_time()
+    return result
 
 
 @dataclass(slots=True, eq=False)
@@ -227,6 +241,7 @@ def _best_response(root: _Node, player: int, budget: TraversalBudget) -> BestRes
     values: dict[_Node, float] = {}
 
     def choose(key: Hashable) -> int:
+        budget.check_time()
         if key in chosen:
             return chosen[key]
         if key in solving:
@@ -260,12 +275,14 @@ def _best_response(root: _Node, player: int, budget: TraversalBudget) -> BestRes
     # Complete the response even at information sets unreachable under its own choices.
     for key in groups:
         choose(key)
-    return BestResponse(
+    response = BestResponse(
         player,
         result,
         {key: groups[key][0][0].actions[index] for key, index in chosen.items()},
         budget.nodes,
     )
+    budget.check_time()
+    return response
 
 
 def best_response(
@@ -275,6 +292,7 @@ def best_response(
     *,
     max_nodes: int = 250_000,
     deadline_seconds: float | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> BestResponse:
     """Exact unilateral response to the other seats' fixed behavioral strategies."""
     if (
@@ -283,7 +301,7 @@ def best_response(
         or not 0 <= player < game.num_players
     ):
         raise ValueError("player must name an existing seat")
-    budget = TraversalBudget(max_nodes, deadline_seconds)
+    budget = TraversalBudget(max_nodes, deadline_seconds, should_cancel)
     return _best_response(_build_tree(game, profile, budget), player, budget)
 
 
@@ -315,9 +333,10 @@ def evaluate_strategy(
     *,
     max_nodes: int = 250_000,
     deadline_seconds: float | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> EvaluationReport:
     """Exact NashConv; ``NashConv / 2`` is reported only for two-player zero-sum games."""
-    budget = TraversalBudget(max_nodes, deadline_seconds)
+    budget = TraversalBudget(max_nodes, deadline_seconds, should_cancel)
     root = _build_tree(game, profile, budget)
     zero_sum = True
 
@@ -336,7 +355,7 @@ def evaluate_strategy(
     values = on_policy(root)
     responses = tuple(_best_response(root, p, budget).value for p in range(game.num_players))
     nash_conv = math.fsum(max(0.0, br - v) for br, v in zip(responses, values, strict=True))
-    return EvaluationReport(
+    report = EvaluationReport(
         values,
         responses,
         nash_conv,
@@ -344,6 +363,8 @@ def evaluate_strategy(
         zero_sum,
         budget.nodes,
     )
+    budget.check_time()
+    return report
 
 
 @dataclass(frozen=True)
@@ -369,6 +390,7 @@ def compare_policies(
     seed: int = 0,
     max_nodes: int = 250_000,
     deadline_seconds: float | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> ComparisonReport:
     """Paired seeded simulations, replacing one seat against fixed opponents.
 
@@ -391,7 +413,7 @@ def compare_policies(
     candidate_profile = list(fixed)
     base_profile[player] = policy_for_player(baseline, game.num_players, player)
     candidate_profile[player] = policy_for_player(candidate, game.num_players, player)
-    budget = TraversalBudget(max_nodes, deadline_seconds)
+    budget = TraversalBudget(max_nodes, deadline_seconds, should_cancel)
     observed: tuple[dict, dict] = ({}, {})
 
     def sample(profile: Any, sample_seed: int, seen: dict) -> float:
@@ -436,7 +458,7 @@ def compare_policies(
         baseline_values.append(sample(base_profile, pair_seed, observed[0]))
         candidate_values.append(sample(candidate_profile, pair_seed, observed[1]))
     differences = [b - a for a, b in zip(baseline_values, candidate_values, strict=True)]
-    return ComparisonReport(
+    report = ComparisonReport(
         player,
         math.fsum(baseline_values) / samples,
         math.fsum(candidate_values) / samples,
@@ -445,3 +467,5 @@ def compare_policies(
         samples,
         seed,
     )
+    budget.check_time()
+    return report

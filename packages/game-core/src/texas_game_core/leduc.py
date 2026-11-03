@@ -65,6 +65,10 @@ class LeducPoker:
     num_players: int = 2
     game_id: ClassVar[str] = "leduc"
     rules_version: ClassVar[str] = "leduc-2p-v1"
+    final_betting_round: ClassVar[int] = 1
+
+    def betting_round(self, state: LeducState) -> int:
+        return int(state.board is not None)
 
     def __post_init__(self) -> None:
         if type(self.num_players) is not int or self.num_players != 2:

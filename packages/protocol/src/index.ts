@@ -2,15 +2,42 @@ import { z } from "zod";
 
 const metadata = z.record(z.string(), z.unknown());
 const action = z.string().min(1).max(128);
-export const GameIdSchema = z.enum(["kuhn", "leduc", "holdem"]);
+export const GameIdSchema = z.enum(["kuhn", "leduc", "holdem", "mushroom"]);
 export const GameConfigSchema = z.strictObject({
   game_id: GameIdSchema,
-  num_players: z.number().int().min(2).max(6),
+  num_players: z.number().int().min(2).max(8),
   stack: z.number().int().positive(),
+  stacks: z.array(z.number().int().nonnegative()).min(2).max(8).nullable().optional(),
   small_blind: z.number().int().positive(),
   big_blind: z.number().int().positive(),
-  button: z.number().int().min(0).max(5),
-  abstraction: z.enum(["none", "suit_canonical"]),
+  straddle: z.number().int().positive().nullable().optional(),
+  button: z.number().int().min(0).max(7),
+  abstraction: z.enum(["none", "suit_canonical", "mushroom_context", "mushroom_population"]),
+  session_hands: z.number().int().min(1).max(4).nullable().optional(),
+}).superRefine((value, context) => {
+  if (value.game_id === "mushroom") {
+    if (value.num_players < 4 || value.small_blind !== 2 || value.big_blind !== 4 || value.straddle !== 8
+      || !["none", "mushroom_context", "mushroom_population"].includes(value.abstraction) || value.button >= value.num_players
+      || (value.abstraction === "mushroom_population" && (value.num_players !== 8 || value.stack !== 800
+        || value.stacks != null || value.button !== 0))
+      || (value.stacks != null && value.stacks.length !== value.num_players)) {
+      context.addIssue({ code: "custom", message: "Incompatible mushroom research model" });
+    }
+    return;
+  }
+  const invalid = value.button >= value.num_players
+    || ["mushroom_context", "mushroom_population"].includes(value.abstraction)
+    || value.small_blind > value.big_blind
+    || (!value.stacks && value.big_blind > value.stack)
+    || (value.game_id === "kuhn" && value.num_players > 6)
+    || (value.game_id === "leduc" && value.num_players !== 2)
+    || value.session_hands != null
+    || (value.game_id !== "holdem" && (value.abstraction !== "none" || value.stacks != null || value.straddle != null))
+    || (value.stacks != null && value.stacks.length !== value.num_players)
+    || (value.stacks != null && value.stacks.some(stack => stack <= 0))
+    || (value.straddle != null && (value.num_players < 4 || value.straddle <= value.big_blind
+      || value.straddle > (value.stacks?.[(value.button + 3) % value.num_players] ?? value.stack)));
+  if (invalid) context.addIssue({ code: "custom", message: "Incompatible game, seats, stacks or forced bets" });
 });
 
 export const HealthResponseSchema = z.strictObject({
@@ -21,7 +48,7 @@ export const HealthResponseSchema = z.strictObject({
   strategy: z.strictObject({
     provider: z.literal("pluribus_style"),
     status: z.literal("research_ready"),
-    supported_games: z.tuple([z.literal("kuhn"), z.literal("leduc"), z.literal("holdem")]),
+    supported_games: z.tuple([z.literal("kuhn"), z.literal("leduc"), z.literal("holdem"), z.literal("mushroom")]),
   }),
 });
 
@@ -30,7 +57,7 @@ export const SessionResponseSchema = z.strictObject({
   state_version: z.number().int().nonnegative(),
   game: GameConfigSchema,
   rules_version: z.string().min(1),
-  actor: z.number().int().min(0).max(5).nullable(),
+  actor: z.number().int().min(0).max(7).nullable(),
   terminal: z.boolean(),
   legal_actions: z.array(action),
   observation: metadata,
@@ -57,6 +84,23 @@ export const TrainingJobSchema = z.strictObject({
   blueprint_id: z.string().nullable(),
   evaluation: metadata.nullable(),
   error: z.string().nullable(),
+});
+
+export const CoreTrainingResponseSchema = z.strictObject({
+  schema_version: z.literal("1.1"),
+  enabled: z.boolean(),
+  phase: z.enum(["disabled", "starting", "waiting_for_idle", "training", "paused", "saving", "limited", "error", "stopped"]),
+  worker_pid: z.number().int().positive().nullable(),
+  game: GameConfigSchema,
+  algorithm: z.literal("pluribus"),
+  objective: z.literal("expected_net_points"),
+  iterations: z.number().int().nonnegative(),
+  information_sets: z.number().int().nonnegative(),
+  averaged_information_sets: z.number().int().nonnegative(),
+  checkpoint_bytes: z.number().int().nonnegative(),
+  quality: z.literal("finite_horizon_unvalidated"),
+  recommendation_ready: z.literal(false),
+  reason: z.string().nullable(),
 });
 
 export const BlueprintsResponseSchema = z.strictObject({
@@ -101,7 +145,7 @@ export const EquityResponseSchema = z.strictObject({
   samples: z.number().int().positive(),
   method: z.string().min(1),
   seed: z.number().int(),
-  opponents: z.number().int().min(1).max(5),
+  opponents: z.number().int().min(1).max(7),
   rejected_draws: z.number().int().nonnegative(),
   algorithm_version: z.literal("card-equity-v1"),
 });
@@ -128,7 +172,7 @@ export const ProfilesResponseSchema = z.strictObject({
   hand_complete: z.boolean(),
   players: z.array(z.strictObject({
     player_id: z.string().min(1),
-    seat: z.number().int().min(0).max(5),
+    seat: z.number().int().min(0).max(7),
     statistics: z.record(z.string(), ProfileStatisticSchema),
     actions: z.array(z.strictObject({
       context: z.string().min(1),
@@ -139,7 +183,7 @@ export const ProfilesResponseSchema = z.strictObject({
       action_encoding: z.literal("family"),
       model_version: z.string().min(1),
     })),
-  })).min(2).max(6),
+  })).min(2).max(8),
   warnings: z.array(z.string()),
 });
 
@@ -215,6 +259,7 @@ export type GameConfig = z.infer<typeof GameConfigSchema>;
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
 export type SessionResponse = z.infer<typeof SessionResponseSchema>;
 export type TrainingJob = z.infer<typeof TrainingJobSchema>;
+export type CoreTrainingResponse = z.infer<typeof CoreTrainingResponseSchema>;
 export type BlueprintsResponse = z.infer<typeof BlueprintsResponseSchema>;
 export type AnalysisResponse = z.infer<typeof AnalysisResponseSchema>;
 export type EquityResponse = z.infer<typeof EquityResponseSchema>;

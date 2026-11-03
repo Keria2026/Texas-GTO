@@ -28,7 +28,7 @@
     "opponents": {
       "type": "integer",
       "minimum": 1,
-      "maximum": 5
+      "maximum": 7
     },
     "rejected_draws": {
       "type": "integer",

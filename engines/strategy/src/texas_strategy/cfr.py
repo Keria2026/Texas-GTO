@@ -2,7 +2,8 @@
 
 This research solver is inspired by the blueprint stage of Pluribus, not a
 reproduction of its abstractions, pruning, optimizations or training scale.
-Games must have perfect recall. Multiplayer training carries no Nash guarantee.
+Perfect-recall guarantees do not extend to explicitly lossy context models.
+Multiplayer training carries no Nash guarantee.
 
 Each iteration freezes the policy and updates every player. Exact CFR weights
 regrets by chance and other players' reach, and averages by the acting player's
@@ -17,6 +18,12 @@ uncorrected externally sampled visits, would produce a different average.
 The full-support proposal is necessary even when target action probability is
 zero. This estimator can have high variance on long paths; it is deliberately
 an auditable tabular baseline, not a production six-player training claim.
+
+A local MCCFR game may supply sample_training_root(rng) -> (child, q, w).
+This initial-root-only proposal seeds sampling reach with q and regret ratio
+with w/q; averages keep their own/sampling-reach correction. Its target mass
+w need not be normalized, but must stay fixed throughout this local solve.
+Such local cumulative values cannot be persisted as a reusable core model.
 """
 
 from collections.abc import Callable
@@ -63,6 +70,37 @@ def _positive_integer(value: Any, name: str, *, allow_zero: bool = False) -> int
     return value
 
 
+def _training_root_sampler(game: Any, algorithm: str) -> Callable | None:
+    sampler = getattr(game, "sample_training_root", None)
+    if sampler is not None:
+        if not callable(sampler):
+            raise ValueError("sample_training_root must be callable")
+        if algorithm != "mccfr":
+            raise ValueError("A local training-root proposal requires algorithm=mccfr")
+    return sampler
+
+
+def _training_root(outcome: Any) -> tuple[Any, float, float]:
+    if not isinstance(outcome, tuple) or len(outcome) != 3:
+        raise ValueError("Training-root proposal must return (child, q, w)")
+    child, probability, mass = outcome
+    try:
+        valid = (
+            type(probability) in (int, float)
+            and isfinite(probability)
+            and 0 < probability <= 1
+            and type(mass) in (int, float)
+            and isfinite(mass)
+            and mass >= 0
+        )
+        ratio = mass / probability if valid else float("nan")
+    except OverflowError:
+        valid, ratio = False, float("nan")
+    if not valid or not isfinite(ratio):
+        raise ValueError("Invalid training-root proposal probability, target mass, or ratio")
+    return child, probability, ratio
+
+
 def chance_distribution(game: Any, state: Any) -> tuple[tuple[str, float], ...]:
     outcomes = tuple(game.chance_outcomes(state))
     if not outcomes:
@@ -92,19 +130,51 @@ class Trainer:
         self,
         game: Any,
         *,
-        algorithm: Literal["cfr", "mccfr"] = "cfr",
-        weighting: Literal["uniform", "linear"] = "uniform",
+        algorithm: Literal["cfr", "mccfr", "pluribus"] = "cfr",
+        weighting: Literal["uniform", "linear"] | None = None,
         seed: int = 0,
-        exploration: float = 0.06,
+        exploration: float | None = None,
+        pluribus: Any = None,
     ) -> None:
         _positive_integer(game.num_players, "num_players")
-        if algorithm not in ("cfr", "mccfr") or weighting not in ("uniform", "linear"):
+        if weighting is None:
+            weighting = "linear" if algorithm == "pluribus" else "uniform"
+        exploration = (
+            (0.0 if algorithm == "pluribus" else 0.06) if exploration is None else exploration
+        )
+        if algorithm not in ("cfr", "mccfr", "pluribus") or weighting not in ("uniform", "linear"):
             raise ValueError("Unsupported algorithm or iteration weighting")
+        self._uses_root_proposal = _training_root_sampler(game, algorithm) is not None
+        if algorithm == "pluribus":
+            from texas_strategy.pluribus import PluribusConfig
+
+            if weighting != "linear" or exploration != 0:
+                raise ValueError(
+                    "Pluribus uses scheduled linear discounting and on-policy sampling"
+                )
+            if pluribus is None:
+                self.pluribus = (
+                    PluribusConfig(average_mode="sampled_uniform", average_samples=16)
+                    if getattr(game, "game_id", None) == "mushroom"
+                    else PluribusConfig()
+                )
+            else:
+                self.pluribus = PluribusConfig.from_dict(pluribus)
+            self._betting_rounds: dict[InformationSet, int] = {}
+            if (
+                not callable(getattr(game, "betting_round", None))
+                or type(getattr(game, "final_betting_round", None)) is not int
+            ):
+                raise ValueError("Pluribus requires explicit betting-round boundaries")
+            if game.final_betting_round < 0 or not callable(getattr(game, "active_players", None)):
+                raise ValueError("Pluribus requires valid betting rounds and active players")
+        elif pluribus is not None:
+            raise ValueError("Pluribus settings require algorithm=pluribus")
         if type(seed) is not int:
             raise ValueError("seed must be an integer")
         if type(exploration) not in (int, float) or not isfinite(exploration):
             raise ValueError("exploration must be finite")
-        if not 0 < exploration <= 1:
+        if algorithm != "pluribus" and not 0 < exploration <= 1:
             raise ValueError("Full-support exploration must be in (0, 1]")
         self.game = game
         self.algorithm = algorithm
@@ -115,9 +185,17 @@ class Trainer:
         self._rng = Random(seed)
         self._table: dict[InformationSet, _TableEntry] = {}
 
-    def average_policy(self, *, missing: Literal["uniform", "error"] = "uniform") -> TabularPolicy:
+    def average_policy(
+        self,
+        *,
+        missing: Literal["uniform", "error"] = "uniform",
+        check: Callable[[], None] | None = None,
+    ) -> TabularPolicy:
+        """Convert complete iterations; optional ``check`` can raise a shared budget error."""
         entries = {}
         for key, entry in self._table.items():
+            if check is not None:
+                check()
             maximum = max(entry.strategy_sum)
             if maximum > 0:
                 scaled = [value / maximum for value in entry.strategy_sum]
@@ -128,7 +206,10 @@ class Trainer:
                 # Do not label their uniform fallback as trained coverage.
                 continue
             entries[key] = PolicyEntry(entry.actions, probabilities)
-        return TabularPolicy(entries, missing=missing)
+        result = TabularPolicy(entries, missing=missing)
+        if check is not None:
+            check()
+        return result
 
     def train(
         self,
@@ -146,6 +227,18 @@ class Trainer:
         preempted. Aborted iterations roll back RNG and every table update.
         Subsequent calls resume the last complete iteration deterministically.
         """
+        root_sampler = _training_root_sampler(self.game, self.algorithm)
+        self._uses_root_proposal |= root_sampler is not None
+        if self.algorithm == "pluribus":
+            from texas_strategy.pluribus import train
+
+            return train(
+                self,
+                iterations,
+                max_nodes=max_nodes,
+                deadline_seconds=deadline_seconds,
+                should_cancel=should_cancel,
+            )
         _positive_integer(iterations, "iterations", allow_zero=True)
         if max_nodes is not None:
             _positive_integer(max_nodes, "max_nodes", allow_zero=True)
@@ -323,13 +416,29 @@ class Trainer:
 
             try:
                 for traverser in range(self.game.num_players):
-                    root = self.game.initial_state()
-                    if self.algorithm == "cfr":
-                        exact(root, traverser, 1.0, 1.0)
+                    if root_sampler is not None:
+                        # One draw, including a zero-mass draw, consumes one root node.
+                        visit()
+                        child, probability, ratio = _training_root(root_sampler(self._rng))
+                        # A zero-mass draw has no recursive visit to check these limits.
+                        if should_cancel is not None and should_cancel():
+                            raise _BudgetStop("cancelled")
+                        if deadline is not None and monotonic() >= deadline:
+                            raise _BudgetStop("deadline")
+                        if ratio:
+                            sampled(child, traverser, 1.0, probability, ratio)
                     else:
-                        sampled(root, traverser, 1.0, 1.0, 1.0)
+                        root = self.game.initial_state()
+                        if self.algorithm == "cfr":
+                            exact(root, traverser, 1.0, 1.0)
+                        else:
+                            sampled(root, traverser, 1.0, 1.0, 1.0)
                 updates = {}
                 for key, delta in deltas.items():
+                    if should_cancel is not None and should_cancel():
+                        raise _BudgetStop("cancelled")
+                    if deadline is not None and monotonic() >= deadline:
+                        raise _BudgetStop("deadline")
                     # External sampling sees many opponents' information sets
                     # that receive no update in this iteration. Persisting a
                     # fresh all-zero table entry is exactly equivalent to an

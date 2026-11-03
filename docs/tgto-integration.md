@@ -1,5 +1,7 @@
 # TGTO 扩展与 Python 后端对接
 
+V1.0 开发中新增实采行为学习与持久画像：同一入库事务维护样本／计数，客户端协商 `capture_profiles_v1` 后接收当前来源的画像。时序、身份范围和学习限制见[观察学习说明](capture-learning.md)。完整 V1.0 仍必须通过实局实时推荐验收，不能把该画像环节单独视为上线完成。
+
 正式采集前端在 [TGTO-FronEnd](https://github.com/Keria2026/TGTO-FronEnd) 的 `dev` 分支。已合并用户推送的 `2e72f34` 业务解析，并完成两条链路：
 
 - 网络：Chrome CDP → WASM → IndexedDB → `network.append` → SQLite → `network.ack`。
@@ -24,12 +26,12 @@ npm run build
 ```sh
 # Texas-GTO；Python 3.12、uv。
 uv sync --frozen
-TEXAS_ALLOWED_ORIGINS='chrome-extension://YOUR_ACTUAL_EXTENSION_ID' uv run --frozen texas-analysis
+uv run --frozen texas-analysis
 ```
 
-替换实际 32 位 ID，不使用通配符。默认监听 `127.0.0.1:8765`。自行读取 `artifacts/local/session.token` 并输入侧栏；不要放进 URL 或仓库。未预设 `TEXAS_API_TOKEN` 时重启会生成新令牌。
+默认仅监听 `127.0.0.1:8765`，免令牌，无需手工配置扩展 ID。安装扩展、浏览器重启或后台恢复后自动连接 `ws://127.0.0.1:8765/v1/research/stream`；服务暂不可用时退避重试。人工断开在当前浏览器会话内保持停止；浏览器重启后恢复默认自动连接。
 
-侧栏选择 `ws://127.0.0.1:8765/v1/research/stream`、连接服务、开始采集，然后在 WPK 入座。检查“业务适配已就绪”、“业务写入／后端确认”以及“服务器牌局与算法状态”。已在手中途接入会保留历史缺口。刷新页面或浏览器重启后需要人工重新开始采集。
+开始采集后检查“业务适配已就绪”、“业务写入／后端确认”和“服务器牌局与算法状态”。连接恢复不自动开始页面采集；已有历史缺口继续保留。
 
 Python 是实际研究后端；无需同时启动前端的 Node 参考接收器（8766）。参考接收器支持双流持久确认，但不提供 Python 的 `capture_state_v1`。
 
@@ -42,14 +44,14 @@ Python 是实际研究后端；无需同时启动前端的 Node 参考接收器�
 TGTO_BACKEND_URL='wss://analysis.example.com/v1/research/stream' npm run build
 ```
 
-构建同时写入运行时地址、manifest HTTPS 权限和 CSP。服务器包仅允许该端点；不允许远端明文 WS、查询令牌、用户名密码或其他路径。服务端配置安装包对应的精确 Origin。当前是单个所有者令牌，不是多用户鉴权。公网部署、真实 TLS 和真实 WPK 牌桌验收仍未完成。
+构建同时写入运行时地址、manifest HTTPS 权限和 CSP。服务器包仅允许该端点；不允许远端明文 WS、查询令牌、用户名密码或其他路径。服务端配置安装包对应的精确 Origin。远端需显式设置 TEXAS_API_TOKEN；这是单个所有者令牌，不是多用户鉴权。公网部署、真实 TLS 和真实 WPK 牌桌验收仍未完成。
 
 ## 协议
 
 HTTP health schema 保持 `1.1`；WebSocket 握手为 `1.2`。客户端：
 
 ```json
-{"type":"auth","token":"USER_PROVIDED_TOKEN","capabilities":["network_status_v1","capture_state_v1"]}
+{"type":"auth","capabilities":["network_status_v1","capture_state_v1"]}
 ```
 
 服务器：
@@ -60,7 +62,7 @@ HTTP health schema 保持 `1.1`；WebSocket 握手为 `1.2`。客户端：
 
 `network.append` 使用 `tgto.network/0.1`；`capture.append` 使用 `tgto.capture/0.1`。业务事件完整字段与前端保持一致，见 [前端契约](https://github.com/Keria2026/TGTO-FronEnd/blob/dev/docs/protocol.md) 和 [Python 校验模型](../services/analysis/src/texas_analysis/capture_contract.py)。每个流使用独立 source UUID 和从 1 开始的规范十进制 u64 字符串序号；每批最多 64 条、256 KiB。客户端单批次在途并轮换来源，避免网络数据阻塞业务流。
 
-- 精确扩展 Origin、首帧令牌、5 秒鉴权期限、60 秒空闲期限；客户端 20 秒 ping。
+- 本地默认模式接受格式合法的 Chrome 扩展 Origin，首帧仅协商能力；显式令牌模式另校验精确 Origin 与 token。握手限 5 秒、空闲限 60 秒；客户端 20 秒 ping。
 - 业务事件拒绝未知字段、非安全整数、重复牌／玩家／座位、非法别名、对手私有选项和结算不守恒。
 - 每个来源从序号 1 连续写入；相同序号同内容幂等，不同内容拒绝。事件、head 和观察状态在同一 SQLite 事务提交后才 ACK。
 - ACK 仅确认提交批次的末尾，不因旧批次重传而确认更晚的 head。冲突、缺号或存储失败不确认、不部分提交。

@@ -1,0 +1,89 @@
+{
+  "limit_bytes": 943718400,
+  "source_sha256": "04766d2532480fb3604656b31b860ab5db17d774a5fdf57cee6cc2879609945c",
+  "before": {
+    "iterations": 267,
+    "information_sets": 375686,
+    "table_sha256": "d31a26d459c48a915917c352b9c886618c5044cba7bed11f3edbf4c85ba31ab8",
+    "rng_sha256": "1566750a4c9113f1318411f2d433baf4588979661a400cc159cadbf573a752b9"
+  },
+  "expected": {
+    "iterations": 270,
+    "information_sets": 380834,
+    "table_sha256": "ae210183c2d9c5c024bd45f9ccd413508c54be17cf4169285afc007d88f360f3",
+    "rng_sha256": "346ad11ac0b7636eed814d76da8a7fa222902710dd873e1ff0441f17fcc57b54"
+  },
+  "database_bytes_with_journal": 220795592,
+  "peak_rss_kib": 657708,
+  "elapsed_seconds": 111.03859186699992,
+  "export_bytes": 122744832,
+  "checks": [
+    "all_rows_equal_before_and_after",
+    "discount_at_270",
+    "rng_equal",
+    "backup_restore",
+    "over_64_mib",
+    "legacy_unchanged"
+  ],
+  "scope": "isolated 8-player 800-point mushroom_context, two-hand horizon; not live WPK acceptance",
+  "cgroup_memory_max_bytes": 943718400,
+  "cgroup_peak_bytes": 660074496,
+  "status": "verified isolated migration, exact continuation, discount, and portable backup",
+  "portable_wheel": {
+    "module": "/home/ubuntu/Project/work/texas-portable-eVj0w2/venv/lib/python3.12/site-packages/texas_strategy/training_store.py",
+    "codebook": "/home/ubuntu/Project/work/texas-portable-eVj0w2/venv/lib/python3.12/site-packages/texas_strategy/mushroom_card_clusters.json",
+    "iterations_before_export": 1,
+    "iterations_after_import": 2,
+    "information_sets": 4092,
+    "cli_backup": "passed",
+    "source_free_worker_restart": "passed",
+    "all_values_and_rng_equal": true
+  },
+  "validation": {
+    "python_tests": 619,
+    "node_tests": 11,
+    "ruff": "passed",
+    "typecheck_schema_build": "passed",
+    "real_wpk_events": 0
+  },
+  "live_service": {
+    "state": {
+      "schema_version": "1.1",
+      "enabled": true,
+      "phase": "training",
+      "worker_pid": 566845,
+      "game": {
+        "game_id": "mushroom",
+        "abstraction": "mushroom_context",
+        "num_players": 8,
+        "stack": 800,
+        "stacks": null,
+        "small_blind": 2,
+        "big_blind": 4,
+        "straddle": 8,
+        "button": 0,
+        "session_hands": 2
+      },
+      "algorithm": "pluribus",
+      "objective": "expected_net_points",
+      "iterations": 274,
+      "information_sets": 386128,
+      "averaged_information_sets": 272690,
+      "checkpoint_bytes": 221606600,
+      "quality": "finite_horizon_unvalidated",
+      "recommendation_ready": false,
+      "reason": null
+    },
+    "systemd": {
+      "MainPID": 566843,
+      "MemoryCurrent": 328744960,
+      "MemoryPeak": 638894080,
+      "MemoryMax": 1073741824,
+      "ActiveState": "active"
+    },
+    "legacy_sha256_unchanged": "04766d2532480fb3604656b31b860ab5db17d774a5fdf57cee6cc2879609945c",
+    "chrome_origin_handshake": "passed",
+    "heartbeat": "passed",
+    "capture_events": 0
+  }
+}

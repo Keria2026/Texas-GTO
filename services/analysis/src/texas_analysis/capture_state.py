@@ -109,8 +109,22 @@ def reduce_event(state, event):
     return s
 
 
-def response(source, through, state):
-    missing = ["verified_rule_profile", "supported_strategy_model"]
+def response(source, through, state, *, public_hand_verified=False, ledger_verified=False):
+    # Legal betting replay proves only the roster and opening cash, not the policy or escrow.
+    missing = [
+        "verified_rule_profile",
+        "supported_strategy_model",
+        "hand_participants",
+        "button_seat",
+        "aligned_starting_stacks",
+        "mushroom_ledger_anchor",
+        "model_context_mapping",
+    ]
+    if public_hand_verified:
+        missing.remove("hand_participants")
+        missing.remove("aligned_starting_stacks")
+        if ledger_verified:
+            missing.remove("mushroom_ledger_anchor")
     if state["hand_id"] is None:
         missing.append("hand_id")
     if not state["history_complete"]:

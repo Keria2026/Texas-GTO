@@ -1,11 +1,13 @@
 """Bounded public-belief search with private multi-valued continuations.
 
-This is a small-game implementation of the *structure* in Pluribus: public
+This implements the *structure* in Pluribus: public
 reach distribution, all private hands, a limited action horizon, and hidden
 continuation choices by every active player. The four bias multipliers and
 finite-game solver are explicit engineering choices, not recovered Pluribus
 parameters. Re-solving here is conditional approximate search, without a safe
-subgame-solving or multiplayer equilibrium guarantee.
+subgame-solving or multiplayer equilibrium guarantee. Sampled continuations
+expose the fixed joint policy as chance nodes, so MCCFR samples complete paths
+without enumerating future cards or caching one noisy draw as a fixed leaf value.
 """
 
 from __future__ import annotations
@@ -13,12 +15,14 @@ from __future__ import annotations
 import json
 import math
 import time
-from collections.abc import Hashable, Sequence
+from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
+from random import Random
 from typing import Any
 
 from texas_game_core.interfaces import CHANCE_PLAYER
 from texas_strategy.cfr import Trainer, TrainingDiagnostics
+from texas_strategy.evaluation import CancellationError as CancellationError
 from texas_strategy.evaluation import (
     EvaluationLimitError,
     TraversalBudget,
@@ -35,6 +39,10 @@ CONTINUATION_ACTIONS = tuple(f"continue:{name}" for name in CONTINUATIONS)
 
 class SearchCoverageError(ValueError):
     """A public root or the requested hand has no supported search coverage."""
+
+
+def _search_information_key(game, state, player):
+    return getattr(game, "search_information_key", game.information_key)(state, player)
 
 
 def _fallback_count(profile: Any) -> int:
@@ -79,6 +87,26 @@ class RootDistribution:
             raise ValueError("public root states must be immutable, distinct hidden worlds")
 
 
+@dataclass(frozen=True)
+class SampledRoot:
+    """Fixed public belief with a known proposal and unnormalized target weight.
+
+    ``sample`` must include every positive-target private world in its support,
+    without conditioning on the requested player's actual cards. The caller
+    owns the fixed rules, evidence and policy snapshot used by this callback.
+    A validated zero target weight may return None instead of a child state.
+    """
+
+    public_key: Hashable
+    actor: int
+    sample: Callable[[Random], tuple[Any, float, float]]
+
+    def __post_init__(self) -> None:
+        hash(self.public_key)
+        if type(self.actor) is not int or self.actor < 0 or not callable(self.sample):
+            raise ValueError("sampled root requires a player actor and callable proposal")
+
+
 def build_public_root(
     game: Any,
     public_key: Hashable,
@@ -88,6 +116,7 @@ def build_public_root(
     max_worlds: int = 512,
     deadline_seconds: float | None = None,
     allow_uniform_fallback: bool = False,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> RootDistribution:
     """Normalize blueprint reach over *all* worlds at a public decision history.
 
@@ -102,7 +131,7 @@ def build_public_root(
         raise SearchCoverageError("this game requires an explicitly supplied bounded public root")
     if type(max_worlds) is not int or max_worlds < 1:
         raise ValueError("max_worlds must be a positive integer")
-    budget = TraversalBudget(max_nodes, deadline_seconds)
+    budget = TraversalBudget(max_nodes, deadline_seconds, should_cancel)
     observed: dict = {}
     worlds: dict[Any, float] = {}
     fallback_before = _fallback_count(profile)
@@ -139,11 +168,12 @@ def build_public_root(
                 visit(game.transition(state, action), next_reach)
 
     visit(game.initial_state(), 1.0)
+    budget.check_time()
     total = math.fsum(worlds.values())
     if total <= 0:
         raise SearchCoverageError("public history is missing or has zero blueprint reach")
     fallbacks = _fallback_count(profile) - fallback_before
-    return RootDistribution(
+    root = RootDistribution(
         public_key,
         tuple(worlds),
         tuple(reach / total for reach in worlds.values()),
@@ -152,10 +182,14 @@ def build_public_root(
         "blueprint_public_reach_with_uniform_fallback" if fallbacks else "blueprint_public_reach",
         fallbacks,
     )
+    budget.check_time()
+    return root
 
 
 def action_semantics(action: str) -> str | None:
     """Explicitly map Kuhn check/bet and poker call/raise sizes to bias families."""
+    if action == "all_in":
+        return "raise"
     family = action.lower().split(":", 1)[0].split("_", 1)[0]
     if family == "fold":
         return "fold"
@@ -198,6 +232,7 @@ class SearchState:
     depth: int = 0
     choices: tuple[str | None, ...] = ()
     root: bool = False
+    rollout: bool = False
 
 
 class DepthLimitedGame:
@@ -206,13 +241,15 @@ class DepthLimitedGame:
     ``depth_limit`` counts player actions, not chance events. At the cutoff,
     active players choose continuation policies in a fixed order. Later seats
     cannot observe earlier choices: the choices never enter their information
-    keys. Leaf payoffs integrate the joint continuation profile for every seat.
+    keys. Exact leaf payoffs integrate the joint continuation profile. With
+    sampled_rollouts, those same policies become chance transitions until the
+    underlying game ends; the trainer owns the RNG and samples anew each visit.
     """
 
     def __init__(
         self,
         game: Any,
-        root: RootDistribution,
+        root: RootDistribution | SampledRoot,
         blueprint: Any,
         *,
         depth_limit: int = 2,
@@ -220,9 +257,13 @@ class DepthLimitedGame:
         max_rollout_nodes: int = 250_000,
         deadline_seconds: float | None = None,
         allow_uniform_fallback: bool = False,
+        sampled_rollouts: bool = False,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> None:
         if type(depth_limit) is not int or depth_limit < 1:
             raise ValueError("depth_limit must be a positive player-action count")
+        if type(sampled_rollouts) is not bool:
+            raise ValueError("sampled_rollouts must be boolean")
         if not callable(getattr(game, "active_players", None)):
             raise SearchCoverageError(
                 "game must expose active_players for leaf continuation choices"
@@ -232,24 +273,102 @@ class DepthLimitedGame:
         self.num_players = game.num_players
         self.game_id = f"{getattr(game, 'game_id', 'finite')}:search"
         self.rules_version = f"{getattr(game, 'rules_version', 'unknown')}:multivalue-v1"
+        if sampled_rollouts:
+            self.rules_version += ":sampled-trajectories-v1"
         self.root_distribution = root
         self.blueprint = blueprint
         self.depth_limit = depth_limit
         self.continuation_multiplier = continuation_multiplier
         self.allow_uniform_fallback = allow_uniform_fallback
-        self.rollout_budget = TraversalBudget(max_rollout_nodes, deadline_seconds)
+        self.sampled_rollouts = sampled_rollouts
+        self.rollout_budget = TraversalBudget(max_rollout_nodes, deadline_seconds, should_cancel)
+        self.rollout_budget.check_time()
         self._tail_cache: dict[tuple, tuple[float, ...]] = {}
+        self.rollout_samples = 0
+        # Share a fixed policy lookup between sampling and validation, retaining only one state.
+        self._rollout_chance: tuple[SearchState | None, tuple[tuple[str, float], ...]] = (None, ())
         self._blueprint_observed: dict = {}
+        self.root_draws = 0
+        self.root_positive_draws = 0
+        self._root_weight_scale = 0.0
+        self._root_weight_sum = 0.0
+        self._root_weight_square_sum = 0.0
+        if isinstance(root, SampledRoot):
+            if not sampled_rollouts:
+                raise ValueError("generated roots require sampled rollouts")
+            if root.actor >= self.num_players:
+                raise SearchCoverageError("sampled root actor is outside the player roster")
+            self.rules_version += ":generated-public-root-v1"
+            self.supports_exact_enumeration = False
+            # Finite roots must not expose this hook: their chance protocol is unchanged.
+            self.sample_training_root = self._sample_training_root
+            return
         self._root_labels = tuple(f"world:{i}" for i in range(len(root.states)))
         self._root_indices = {label: i for i, label in enumerate(self._root_labels)}
         root_actor = game.actor(root.states[0])
         if root_actor is None or root_actor == CHANCE_PLAYER:
             raise SearchCoverageError("public root must be a player decision")
         for state in root.states:
+            self.rollout_budget.check_time()
             if game.public_key(state) != root.public_key or game.actor(state) != root_actor:
                 raise SearchCoverageError(
                     "root worlds must share the same public history and actor"
                 )
+        self.rollout_budget.check_time()
+
+    def _sample_training_root(self, rng: Random) -> tuple[SearchState | None, float, float]:
+        self.rollout_budget.check_time()
+        outcome = self.root_distribution.sample(rng)
+        self.rollout_budget.check_time()
+        if not isinstance(outcome, tuple) or len(outcome) != 3:
+            raise ValueError("sampled root must return (child, q, w)")
+        underlying, q, w = outcome
+        try:
+            valid = (
+                type(q) in (int, float)
+                and math.isfinite(q)
+                and 0 < q <= 1
+                and type(w) in (int, float)
+                and math.isfinite(w)
+                and w >= 0
+                and math.isfinite(w / q)
+            )
+        except OverflowError:
+            valid = False
+        if not valid:
+            raise ValueError("sampled root requires finite q, w and w/q with 0 < q <= 1 and w >= 0")
+        if w > 0:
+            actor = self.game.actor(underlying)
+            if (
+                self.game.public_key(underlying) != self.root_distribution.public_key
+                or type(actor) is not int
+                or actor != self.root_distribution.actor
+            ):
+                raise SearchCoverageError(
+                    "sampled world must match the fixed public history and actor"
+                )
+        result = (self.wrap_state(underlying) if w > 0 else None), q, w
+        self.rollout_budget.check_time()
+        self.root_draws += 1
+        if w > 0:
+            self.root_positive_draws += 1
+            weight = w / q
+            # Rescale diagnostics only; never rescale or clip the trainer's weights.
+            if weight > self._root_weight_scale:
+                scale = self._root_weight_scale / weight
+                self._root_weight_sum *= scale
+                self._root_weight_square_sum *= scale * scale
+                self._root_weight_scale = weight
+            scaled = weight / self._root_weight_scale
+            self._root_weight_sum += scaled
+            self._root_weight_square_sum += scaled * scaled
+        return result
+
+    @property
+    def root_effective_sample_size(self) -> float:
+        if not self._root_weight_square_sum:
+            return 0.0
+        return self._root_weight_sum**2 / self._root_weight_square_sum
 
     @property
     def rollout_cache_entries(self) -> int:
@@ -264,6 +383,7 @@ class DepthLimitedGame:
     def _at_cutoff(self, state: SearchState) -> bool:
         return (
             not state.root
+            and not state.rollout
             and state.depth >= self.depth_limit
             and self.game.actor(state.underlying) is not None
         )
@@ -279,12 +399,16 @@ class DepthLimitedGame:
     def actor(self, state: SearchState) -> int | None:
         if state.root:
             return CHANCE_PLAYER
+        if state.rollout:
+            return None if self.game.actor(state.underlying) is None else CHANCE_PLAYER
         if self._at_cutoff(state):
             return next((p for p in self._active(state) if state.choices[p] is None), None)
         return self.game.actor(state.underlying)
 
     def legal_actions(self, state: SearchState) -> tuple[str, ...]:
         if state.root:
+            if isinstance(self.root_distribution, SampledRoot):
+                raise ValueError("generated root requires the initial-root proposal sampler")
             return self._root_labels
         if self.actor(state) is None:
             return ()
@@ -293,42 +417,139 @@ class DepthLimitedGame:
         return tuple(self.game.legal_actions(state.underlying))
 
     def chance_outcomes(self, state: SearchState) -> tuple[tuple[str, float], ...]:
+        self.rollout_budget.check_time()
         if state.root:
+            if isinstance(self.root_distribution, SampledRoot):
+                raise ValueError("generated root requires the initial-root proposal sampler")
             return tuple(zip(self._root_labels, self.root_distribution.probabilities, strict=True))
         if self.actor(state) != CHANCE_PLAYER:
             return ()
-        return checked_chance(self.game, state.underlying)
+        if state.rollout and self.game.actor(state.underlying) != CHANCE_PLAYER:
+            if self._rollout_chance[0] is state:
+                return self._rollout_chance[1]
+            outcomes = tuple(
+                (action, probability)
+                for action, probability in zip(
+                    self.game.legal_actions(state.underlying),
+                    self._continuation_probabilities(state),
+                    strict=True,
+                )
+                if probability > 0
+            )
+            self._rollout_chance = state, outcomes
+            self.rollout_budget.check_time()
+            return outcomes
+        outcomes = checked_chance(self.game, state.underlying)
+        self.rollout_budget.check_time()
+        return outcomes
+
+    def _continuation_probabilities(self, state: SearchState) -> tuple[float, ...]:
+        actor = self.game.actor(state.underlying)
+        return ContinuationPolicy(
+            self.blueprint,
+            state.choices[actor] or "blueprint",
+            self.continuation_multiplier,
+            self._blueprint_observed,
+            self.allow_uniform_fallback,
+        ).probabilities(self.game, state.underlying)
+
+    def sample_chance_outcome(self, state: SearchState, rng) -> tuple[str, float]:
+        if self.actor(state) != CHANCE_PLAYER:
+            raise ValueError("state is not a chance node")
+        self.rollout_budget.check_time()
+        if not state.root and self.game.actor(state.underlying) == CHANCE_PLAYER:
+            sampler = getattr(self.game, "sample_chance_outcome", None)
+            if callable(sampler):
+                outcome = sampler(state.underlying, rng)
+                self.rollout_budget.check_time()
+                return outcome
+        outcomes = self.chance_outcomes(state)
+        threshold, cumulative = rng.random(), 0.0
+        positive = tuple(
+            (action, probability) for action, probability in outcomes if probability > 0
+        )
+        for action, probability in positive:
+            cumulative += probability
+            if threshold < cumulative:
+                return action, probability
+        return positive[-1]
 
     def transition(self, state: SearchState, action: str) -> SearchState:
-        if action not in self.legal_actions(state):
-            raise ValueError("illegal subgame action")
+        self.rollout_budget.check_time()
         if state.root:
-            return self.wrap_state(self.root_distribution.states[self._root_indices[action]])
+            if isinstance(self.root_distribution, SampledRoot):
+                raise ValueError("generated root requires the initial-root proposal sampler")
+            if action not in self._root_indices:
+                raise ValueError("illegal subgame action")
+            result = self.wrap_state(self.root_distribution.states[self._root_indices[action]])
+            self.rollout_budget.check_time()
+            return result
         if self._at_cutoff(state):
+            if self.actor(state) is None or action not in CONTINUATION_ACTIONS:
+                raise ValueError("illegal subgame action")
             choices = list(state.choices)
             choices[self.actor(state)] = action.removeprefix("continue:")
-            return SearchState(state.underlying, state.depth, tuple(choices))
+            rollout = self.sampled_rollouts and all(
+                choices[p] is not None for p in self._active(state)
+            )
+            result = SearchState(state.underlying, state.depth, tuple(choices), rollout=rollout)
+            self.rollout_budget.check_time()
+            return result
         actor = self.actor(state)
-        return SearchState(
+        if actor is None:
+            raise ValueError("illegal subgame action")
+        if state.rollout:
+            self.rollout_budget.tick()
+            if self.game.actor(state.underlying) != CHANCE_PLAYER:
+                outcomes = self.chance_outcomes(state)
+                if not any(a == action and p > 0 for a, p in outcomes):
+                    raise ValueError("action has zero continuation probability")
+            # The underlying transition validates card draws without enumerating them.
+            underlying = self.game.transition(state.underlying, action)
+            terminal = self.game.actor(underlying) is None
+            result = SearchState(
+                underlying,
+                state.depth,
+                state.choices,
+                rollout=True,
+            )
+            self.rollout_budget.check_time()
+            self.rollout_samples += int(terminal)
+            return result
+        if actor != CHANCE_PLAYER and action not in self.legal_actions(state):
+            raise ValueError("illegal subgame action")
+        result = SearchState(
             self.game.transition(state.underlying, action),
             state.depth + int(actor != CHANCE_PLAYER),
             state.choices,
         )
+        self.rollout_budget.check_time()
+        return result
 
     def information_key(self, state: SearchState, player: int) -> str:
-        if state.root:
-            raise ValueError("artificial chance root has no player information set")
+        if state.root or state.rollout:
+            raise ValueError("chance-only search state has no player information set")
         if type(player) is not int or not 0 <= player < self.num_players:
             raise ValueError("invalid observing player")
+        if state.depth == 0:
+            return self.root_information_key(
+                _search_information_key(self.game, state.underlying, player)
+            )
         return json.dumps(
             [
                 "multivalue-v1",
                 "continuation" if self._at_cutoff(state) else "play",
                 state.depth,
-                self.game.information_key(state.underlying, player),
+                _search_information_key(self.game, state.underlying, player),
                 state.choices[player],
             ],
             separators=(",", ":"),
+        )
+
+    @staticmethod
+    def root_information_key(information_key: str) -> str:
+        return json.dumps(
+            ["multivalue-v1", "play", 0, information_key, None], separators=(",", ":")
         )
 
     def observation(self, state: SearchState, player: int) -> dict:
@@ -340,10 +561,13 @@ class DepthLimitedGame:
         }
 
     def terminal_payoffs(self, state: SearchState) -> tuple[float, ...]:
+        self.rollout_budget.check_time()
         if self.actor(state) is not None:
             raise ValueError("payoffs require a terminal subgame state")
         if self.game.actor(state.underlying) is None:
-            return checked_payoffs(self.game, state.underlying)
+            values = checked_payoffs(self.game, state.underlying)
+            self.rollout_budget.check_time()
+            return values
         key = (state.underlying, state.choices)
         if key not in self._tail_cache:
             profile = tuple(
@@ -359,6 +583,7 @@ class DepthLimitedGame:
             self._tail_cache[key] = evaluate_policy(
                 self.game, profile, start_state=state.underlying, budget=self.rollout_budget
             )
+        self.rollout_budget.check_time()
         return self._tail_cache[key]
 
 
@@ -368,7 +593,7 @@ class SearchResult:
     information_key: str
     actions: tuple[str, ...]
     probabilities: tuple[float, ...]
-    root_distribution: RootDistribution
+    root_distribution: RootDistribution | SampledRoot
     policy: Any
     subgame: DepthLimitedGame
     diagnostics: TrainingDiagnostics
@@ -381,21 +606,34 @@ class SearchResult:
     )
 
     @property
-    def root_worlds(self) -> int:
+    def root_worlds(self) -> int | None:
+        if isinstance(self.root_distribution, SampledRoot):
+            return None
         return len(self.root_distribution.states)
 
     def to_dict(self) -> dict:
-        return {
+        generated = isinstance(self.root_distribution, SampledRoot)
+        result = {
             "player": self.player,
             "information_key": self.information_key,
             "actions": list(self.actions),
             "probabilities": list(self.probabilities),
             "root_worlds": self.root_worlds,
-            "root_reach_probability": self.root_distribution.reach_probability,
-            "root_source": self.root_distribution.source,
-            "public_root_nodes": self.root_distribution.nodes,
+            "root_reach_probability": None
+            if generated
+            else self.root_distribution.reach_probability,
+            "root_source": "generated_public_belief"
+            if generated
+            else self.root_distribution.source,
+            "public_root_nodes": self.subgame.root_draws
+            if generated
+            else self.root_distribution.nodes,
             "rollout_nodes": self.subgame.rollout_budget.nodes,
             "rollout_cache_entries": self.subgame.rollout_cache_entries,
+            "rollout_samples": self.subgame.rollout_samples,
+            "continuation_evaluation": "sampled_trajectories"
+            if self.subgame.sampled_rollouts
+            else "exact_expectation",
             "depth_limit": self.subgame.depth_limit,
             "continuation_multiplier": self.subgame.continuation_multiplier,
             "continuations": list(CONTINUATIONS),
@@ -405,16 +643,34 @@ class SearchResult:
             "quality": self.quality,
             "warnings": list(self.warnings)
             + (
+                ["Continuation values are sampled, with no convergence or error-bound certificate."]
+                if self.subgame.sampled_rollouts
+                else []
+            )
+            + (
                 ["Untrained blueprint information sets used explicitly enabled uniform fallbacks."]
                 if self.blueprint_fallback_queries
                 else []
             )
             + (
                 ["Caller-supplied public belief coverage and provenance have not been certified."]
-                if self.root_distribution.source == "caller_supplied_public_belief"
+                if generated or self.root_distribution.source == "caller_supplied_public_belief"
                 else []
             ),
         }
+        if generated:
+            result.update(
+                root_draws=self.subgame.root_draws,
+                root_positive_draws=self.subgame.root_positive_draws,
+                root_effective_sample_size=self.subgame.root_effective_sample_size,
+                root_sampling_scope="all_draws_including_discarded_work",
+                root_coverage="sampled_target_only_full_range_not_certified",
+            )
+            result["warnings"].append(
+                "Generated roots do not guarantee finite-budget private-hand coverage; "
+                "normalized reach and posterior EV are unknown. Root ESS is diagnostic only."
+            )
+        return result
 
 
 def solve_subgame(
@@ -435,6 +691,8 @@ def solve_subgame(
     max_nodes: int = 1_000_000,
     deadline_seconds: float | None = None,
     allow_uniform_fallback: bool = False,
+    sampled_rollouts: bool = False,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> SearchResult:
     """Solve for the entire public range; only then query the actual player's hand.
 
@@ -442,28 +700,32 @@ def solve_subgame(
     return. Its private cards are never used to filter the public root. A caller
     supplied root is explicitly labeled and must itself be a public belief,
     including the hero's full range; the engine cannot certify its provenance.
+    Cancellation raises CancellationError, independently of budget exhaustion.
+    Root construction, training, tails and final policy conversion share one
+    wall deadline; neither cancellation nor expiry returns an earlier policy.
     """
     started = time.monotonic()
     fallback_before = _fallback_count(blueprint)
     if type(iterations) is not int or iterations < 1:
         raise ValueError("search requires at least one iteration")
+    if sampled_rollouts and algorithm != "mccfr":
+        raise ValueError("sampled rollouts require algorithm=mccfr")
     if type(max_root_worlds) is not int or max_root_worlds < 1:
         raise ValueError("max_root_worlds must be a positive integer")
-    clock = TraversalBudget(1, deadline_seconds)
+    clock = TraversalBudget(1, deadline_seconds, should_cancel)
+    clock.started = started
 
-    def remaining() -> float | None:
+    def check_search() -> bool:
         clock.check_time()
-        if deadline_seconds is None:
-            return None
-        seconds = deadline_seconds - (time.monotonic() - started)
-        if seconds <= 0:
-            raise EvaluationLimitError("search deadline exceeded")
-        return seconds
+        return False
 
+    check_search()
     player = game.actor(target_state)
+    check_search()
     if player is None or player == CHANCE_PLAYER:
         raise SearchCoverageError("target state must be a player decision")
     public_key = game.public_key(target_state)
+    check_search()
     if root_distribution is None:
         root_distribution = build_public_root(
             game,
@@ -471,8 +733,8 @@ def solve_subgame(
             blueprint,
             max_nodes=max_root_nodes,
             max_worlds=max_root_worlds,
-            deadline_seconds=remaining(),
             allow_uniform_fallback=allow_uniform_fallback,
+            should_cancel=check_search,
         )
     else:
         if root_distribution.public_key != public_key:
@@ -496,43 +758,151 @@ def solve_subgame(
         depth_limit=depth_limit,
         continuation_multiplier=continuation_multiplier,
         max_rollout_nodes=max_rollout_nodes,
-        deadline_seconds=remaining(),
         allow_uniform_fallback=allow_uniform_fallback,
+        sampled_rollouts=sampled_rollouts,
+        should_cancel=check_search,
     )
-    requested_info = game.information_key(target_state, player)
-    representative = next(
-        (
-            state
-            for state in root_distribution.states
-            if game.information_key(state, player) == requested_info
-        ),
-        None,
-    )
+    requested_info = _search_information_key(game, target_state, player)
+    representative = None
+    for state in root_distribution.states:
+        check_search()
+        if _search_information_key(game, state, player) == requested_info:
+            representative = state
+            break
+    check_search()
     if representative is None:
         raise SearchCoverageError(
             "the requested private information set has zero public-root reach"
         )
+    return _train_search(
+        subgame,
+        player=player,
+        requested_info=requested_info,
+        representative=representative,
+        iterations=iterations,
+        algorithm=algorithm,
+        weighting=weighting,
+        seed=seed,
+        max_nodes=max_nodes,
+        clock=clock,
+        fallback_before=fallback_before,
+    )
+
+
+def solve_generated_subgame(
+    game: Any,
+    root: SampledRoot,
+    blueprint: Any,
+    *,
+    target_player: int,
+    target_information_key: str,
+    depth_limit: int = 2,
+    iterations: int = 100,
+    weighting: str = "linear",
+    seed: int = 0,
+    continuation_multiplier: float = 4.0,
+    max_rollout_nodes: int = 250_000,
+    max_nodes: int = 1_000_000,
+    deadline_seconds: float | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+) -> SearchResult:
+    """Search a fixed generative public belief, then query one private information set.
+
+    No hidden target state or finite world list is required. The target key is
+    the underlying game's search_information_key (information_key if absent).
+    Only MCCFR with sampled continuations is supported; uncovered policies and
+    a target absent from the completed iterations fail explicitly. The caller
+    keeps the root evidence and blueprint snapshot fixed until this returns.
+    """
+    started = time.monotonic()
+    fallback_before = _fallback_count(blueprint)
+    if not isinstance(root, SampledRoot):
+        raise ValueError("generated search requires a SampledRoot")
+    if type(iterations) is not int or iterations < 1:
+        raise ValueError("search requires at least one iteration")
+    if type(target_player) is not int or target_player != root.actor:
+        raise SearchCoverageError("target player must be the public root actor")
+    if not isinstance(target_information_key, str) or not target_information_key:
+        raise ValueError("target information key must be a nonempty string")
+    clock = TraversalBudget(1, deadline_seconds, should_cancel)
+    clock.started = started
+
+    def check_search() -> bool:
+        clock.check_time()
+        return False
+
+    check_search()
+    subgame = DepthLimitedGame(
+        game,
+        root,
+        blueprint,
+        depth_limit=depth_limit,
+        continuation_multiplier=continuation_multiplier,
+        max_rollout_nodes=max_rollout_nodes,
+        sampled_rollouts=True,
+        should_cancel=check_search,
+    )
+    return _train_search(
+        subgame,
+        player=target_player,
+        requested_info=target_information_key,
+        iterations=iterations,
+        algorithm="mccfr",
+        weighting=weighting,
+        seed=seed,
+        max_nodes=max_nodes,
+        clock=clock,
+        fallback_before=fallback_before,
+    )
+
+
+def _train_search(
+    subgame: DepthLimitedGame,
+    *,
+    player: int,
+    requested_info: str,
+    iterations: int,
+    algorithm: str,
+    weighting: str,
+    seed: int,
+    max_nodes: int,
+    clock: TraversalBudget,
+    fallback_before: int,
+    representative: Any = None,
+) -> SearchResult:
+    def check_search() -> bool:
+        clock.check_time()
+        return False
+
     trainer = Trainer(subgame, algorithm=algorithm, weighting=weighting, seed=seed)
-    diagnostics = trainer.train(iterations, max_nodes=max_nodes, deadline_seconds=remaining())
+    diagnostics = trainer.train(iterations, max_nodes=max_nodes, should_cancel=check_search)
+    check_search()
     if diagnostics.completed_iterations == 0:
         raise EvaluationLimitError("search budget allowed no complete training iteration")
-    policy = trainer.average_policy(missing="error")
-    decision_state = subgame.wrap_state(representative)
-    if not policy.contains(subgame, decision_state):
+    policy = trainer.average_policy(missing="error", check=clock.check_time)
+    entry = policy.lookup(player, subgame.root_information_key(requested_info))
+    if entry is None:
         raise SearchCoverageError("search did not train the requested private information set")
-    probabilities = checked_probabilities(subgame, decision_state, policy)
-    return SearchResult(
+    if representative is None:
+        actions, probabilities = entry.actions, entry.probabilities
+    else:
+        decision_state = subgame.wrap_state(representative)
+        probabilities = checked_probabilities(subgame, decision_state, policy)
+        actions = tuple(subgame.game.legal_actions(representative))
+    result = SearchResult(
         player,
         requested_info,
-        tuple(game.legal_actions(representative)),
+        actions,
         probabilities,
-        root_distribution,
+        subgame.root_distribution,
         policy,
         subgame,
         diagnostics,
-        time.monotonic() - started,
-        _fallback_count(blueprint) - fallback_before,
+        time.monotonic() - clock.started,
+        _fallback_count(subgame.blueprint) - fallback_before,
     )
+    check_search()
+    return result
 
 
 search = solve_subgame

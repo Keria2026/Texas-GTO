@@ -1,10 +1,14 @@
 # Texas GTO
 
+正式 Chrome 扩展现位于 [Client/](Client/)，与算法／训练服务共用本仓库。GitHub Actions 对每次 push（包括合并后的提交）和 pull request 执行检查与打包，生成 **Serve** 和 **Client** 两个下载工件。Serve 包含 Ubuntu 24.04 的离线安装器与锁定依赖，Client 为可加载扩展。安装和数据迁移见 [Serve 说明](deploy/README-Serve.md)、[Client 说明](deploy/README-Client.md)。
+
+当前发布范围为 **0.6.1 预览**：已覆盖的八人节点可实时展示 Pluribus 两手分桶平均策略，支持自动空闲训练、恢复与模型／WPK 学习数据迁移。完整八人在线搜索、画像适应和实局策略质量尚未验收，不能标记为正式 V1.0。当前行为与边界以 [八人建议说明](docs/eight-player-recommendations.md) 为准；以下保留算法工作台和历史研究入口。
+
 以 **Pluribus 的自博弈 blueprint＋深度受限搜索**为核心的扑克研究项目，目标产品为 **Chrome 扩展实时采集 WPK 数据＋服务器承担算法计算、搜索与训练**。当前提供可运行的离线研究工作台、模拟器与算法命令行。
 
-当前版本可以在**没有真实网站数据**的情况下完成模拟牌局、CFR/MCCFR 训练、策略保存与续训、全范围搜索、独立最佳响应评测及牌力计算。支持 2–6 人标准德州规则；策略质量首先在 Kuhn／Leduc 有限博弈验证。完整六人德州仍处于稀疏策略和抽象实验阶段，尚无可靠的大规模已训练策略库，也未复现 Pluribus 论文性能。
+当前版本可以在**没有真实网站数据**的情况下完成模拟牌局、CFR/MCCFR 训练、策略保存与续训、全范围搜索、独立最佳响应评测及牌力计算。支持 2–8 人标准德州规则，4–8 人可配置足额 live straddle，筹码可逐席指定；策略质量首先在 Kuhn／Leduc 有限博弈验证。完整德州仍处于稀疏策略和抽象实验阶段，尚无可靠的大规模已训练策略库，也未复现 Pluribus 论文性能。
 
-用户最新目标为 **8 人、2/4 分盲注、每手强制 8 分 straddle、初始买入 800 分且跨手延续筹码、无抽水，并含桌上筹码缴纳的蘑菇池**。蘑菇费每手发牌前扣，少于 4 人结束结算。当前运行版本尚不支持该完整配置；已确认条件、旧截图差异与待确认项见 [目标规则](docs/mushroom-rules.md)。
+用户最新目标为 **4–8 人、以 8 人为主，2/4 分盲注、每手强制 8 分 straddle、初始买入 800 分且跨手延续筹码、无抽水，并含桌上筹码缴纳的蘑菇池**。蘑菇费每手发牌前扣，少于 4 人结束结算。当前运行版本尚不支持该完整配置；已确认条件、旧截图差异与待确认项见 [目标规则](docs/mushroom-rules.md)。
 
 生产用户安装 Chrome 扩展后连接服务器使用，无需在本机运行 Python。目标职责、实时传输与待迁移项见 [扩展与服务器架构](docs/extension-server-architecture.md)。下面的本地启动命令供开发与算法验证；WPK 业务采集与 Python 接入已完成合成链路验证，见 [扩展对接](docs/tgto-integration.md)；真实牌桌验收和生产服务器部署尚未完成。
 
@@ -18,7 +22,9 @@ uv sync --frozen
 uv run --frozen texas-analysis
 ```
 
-服务仅监听 `127.0.0.1:8765`。首次启动在 `artifacts/local/session.token` 写入随机本地令牌（权限 `0600`，每次启动重新生成），日志只显示路径。自行在本机读取该文件，将内容粘贴到工作台的令牌框；界面仅在内存保留令牌。也可预设 `TEXAS_API_TOKEN`，至少 24 个无空白 ASCII 字符；不要提交令牌。
+服务仅监听 `127.0.0.1:8765`，默认本地模式无需令牌。打开工作台或加载 TGTO 采集扩展后自动连接，服务恢复后自动重试。普通网页来源与伪造 Host 被拒绝；HTTP 客户端自动发送固定 `X-Texas-Local: 1` 标记，WebSocket 接受合法 Chrome 扩展 Origin。默认不再生成或读取 `session.token`。
+
+本机已配置 Windows 登录后启动 Ubuntu-24.04，再由 systemd 用户服务托管算法端，进程退出后自动重启；无需重复运行上述服务命令。安装、日志与停用方法见 [WSL 本地服务自启动](docs/local-startup.md)。工作台的 Vite 开发服务器仍按需启动。
 
 另一个终端启动界面：
 
@@ -26,18 +32,20 @@ uv run --frozen texas-analysis
 npm run dev
 ```
 
-打开 `http://127.0.0.1:5173`，检查连接，然后：
+打开 `http://127.0.0.1:5173`，界面自动连接服务：
 
-1. 在「牌局」创建双人 Kuhn 模拟手牌。
-2. 在「训练与策略」训练 1,000 轮 CFR，查看独立评测与实际完成预算。
-3. 选择训练产生的 blueprint，查询当前节点的基线频率，或启用有限深度搜索。
-4. 回到牌局执行合法动作；旧建议随状态版本变化清除。
-5. 「牌力」查看当前牌型、nuts 与 equity；「玩家」查看模拟手牌的公开行动统计。
-6. 在策略区的画像适应实验中，比较明确假设风格下的增益和最坏情况损失。
+1. “核心策略自动训练”显示八人各 800 分蘑菇上下文模型的实际进度。服务空闲 30 秒后自动训练，完成迭代保存同一份检查点，重启自动续训。分桶和工件升级边界见[上下文说明](docs/mushroom-context.md)。
+2. 收到牌局事件／计算请求时让位；关闭页面不停止服务端训练。当前两手训练视野仍是研究近似，尚不用于实局推荐。
+3. 算法开发时可展开“算法验证（开发工具）”运行 Kuhn／Leduc，或在“算法验证策略库”检查对应工件。
+4. 需要时展开“画像适应实验”，比较假设对手模型下的收益与最坏情况损失。资源上限与导入导出见 [训练说明](training/README.md)。
 
-默认示例是合成数据，模拟器可轮流查看当前行动座位；没有连接 WPK、自动下注或读取外部未公开底牌。频率不是胜率或行动 EV；未知信息集返回不支持。牌局事件持久化到 SQLite，支持幂等动作、重启回放和删除。
+前端已按用户要求移除牌局模拟与牌力计算，以及依赖模拟牌局的节点查询和模拟画像操作。服务器的规则、牌力、搜索和模拟 API 保留用于算法验证。Kuhn 支持 2–6 人、Leduc 固定 2 人，它们不代表目标德州·蘑菇训练；蘑菇有限视野训练已接入，完整长期策略与 WPK 实时推荐尚未完成。
+
+策略库包含同一训练任务各信息集的行动分布。信息集数量是保存的决策情景数量，不是独立模型数或样本数；不同情景通常有不同策略，同一工件的同一信息集查询保持一致。
 
 ## 算法命令行
+
+新增 `--algorithm pluribus`：按作者补充材料实现 on-policy external-sampling MCCFR、负遗憾剪枝、早期折扣、翻前策略采样与翻后快照。网页训练默认使用此算法。调度使用可复现的完成迭代数，区别于原论文的运行分钟；参数、验证和尚缺部分见 [Pluribus 实现](docs/pluribus-implementation.md)。
 
 ```sh
 uv run --frozen texas-research train \
@@ -62,13 +70,9 @@ uv run --frozen texas-research resume \
 npm run build
 ```
 
-在 Chrome 116+ 的 `chrome://extensions` 开启开发者模式，加载 `apps/extension/dist`，点击扩展图标打开侧栏。读取扩展 ID 后，以精确 Origin 启动服务：
+在 Chrome 116+ 的 `chrome://extensions` 开启开发者模式，加载 `apps/extension/dist`，点击扩展图标打开侧栏即可自动连接本地算法端。正式 WPK 采集扩展使用相邻 `TGTO-FronEnd/dist`，安装或浏览器重启后由后台自动连接；开始采集仍需用户主动操作。
 
-```sh
-TEXAS_ALLOWED_ORIGINS='http://127.0.0.1:5173,chrome-extension://YOUR_EXTENSION_ID' uv run --frozen texas-analysis
-```
-
-不接受通配 Origin。`.env.example` 是配置示例，服务不自动读取 `.env`。扩展仅申请侧栏与本机 HTTP 访问权限；Chrome host 匹配模式不能限制端口，应用代码固定访问 `127.0.0.1:8765`。
+默认允许两个工作台端口 5173/5174 和格式合法的 Chrome 扩展 Origin，不接受任意网页 Origin 或通配字符串。仅本地默认模式免令牌；显式设置 `TEXAS_API_TOKEN` 会进入原令牌模式，用于独立测试或远端服务，并需明确配置扩展 Origin。`.env.example` 不会自动加载。
 
 ## 检查
 
@@ -85,7 +89,7 @@ uv run --frozen pytest
 
 | 路径 | 当前职责 |
 | --- | --- |
-| `apps/extension` | 模拟、训练、搜索、equity 和画像的侧栏工作台 |
+| `apps/extension` | 算法验证训练、策略库管理与假设画像适应实验 |
 | `packages/protocol` | Zod 运行时契约与生成的 JSON Schema |
 | `packages/game-core` | Kuhn／Leduc／无限注德州、牌型和 equity、蘑菇账本 |
 | `engines/strategy` | CFR/MCCFR、blueprint、搜索、独立评测、画像与实验适应 |
@@ -100,6 +104,6 @@ uv run --frozen pytest
 - [对手建模研究](docs/opponent-modeling-paper.md)、[蘑菇规则缺口](docs/mushroom-rules.md)
 - [WPK 接入证据](docs/wpk-network-discovery.md)
 
-画像是 Pluribus 基线之外的项目扩展；蘑菇模块目前验证会话账本，尚未训练跨手策略。真实数据适配、大规模有损抽象／剪枝和长期训练、多人策略强度验证仍需继续完成。
+画像是 Pluribus 基线之外的项目扩展；蘑菇模块已接入有限视野跨手训练及自动续训。真实数据匹配、生产抽象与长期价值、多人策略强度验证仍需继续完成，自动候选不自动晋级为实局推荐模型。
 
 原创代码采用 [MIT](LICENSE)。外部论文、设计文档与资料的来源和权利说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。根目录 [DESIGN.md](DESIGN.md) 保留用户指定的视觉参考原文。

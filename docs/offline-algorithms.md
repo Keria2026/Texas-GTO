@@ -6,20 +6,23 @@
 
 ## 已实现的主线
 
+新增 `algorithm=pluribus` 的补充材料训练核心，含 on-policy external sampling、可恢复的负遗憾剪枝、早期周期折扣、翻前动作计数和翻后策略快照。原 `cfr/mccfr` 保留作对照。实现与原文运行时间调度的差异、命令和验证见 [Pluribus 实现](pluribus-implementation.md)。
+
 | 模块 | 当前行为 | 边界 |
 | --- | --- | --- |
 | `texas_game_core.kuhn` | 2–6 人有限 Kuhn，2 人采用标准规则 | 多人是明确版本的研究扩展，不是德州 |
 | `texas_game_core.leduc` | 两人、两轮下注的有限 Leduc，显式加注上限 | 仅这一规则版本 |
-| `texas_game_core.holdem` | 2–6 人标准德州、整数筹码、合法下注、全下和边池、有限研究动作集 | 无抽水／蘑菇，CLI 不做全树枚举 |
+| `texas_game_core.holdem` | 2–8 人标准德州、4–8 人足额 live straddle、逐席筹码、合法下注、全下和边池、有限研究动作集 | 无抽水／蘑菇，短 straddle 拒绝，CLI 不做全树枚举 |
 | `texas_strategy.cfr.Trainer` | 完整树 CFR、带重要性修正和完整支持采样的 external-sampling MCCFR；uniform 或 linear 迭代权重 | 完美记忆游戏；多人不具有一般纳什收敛保证 |
 | `texas_strategy.blueprint` | 有版本和校验和的 JSON blueprint、保留 RNG 状态的 JSON checkpoint | 校验和检测损坏，不证明来源可信；不加载 pickle |
 | `texas_strategy.abstraction` | 德州全局花色置换规范化，翻前 1,326 组合映射到 169 类，保留逐街可见牌历史 | 同构合并；不是 Pluribus 的生产规模牌张分桶 |
-| `texas_strategy.search` | 公共根覆盖全部私牌世界；截断时各活跃玩家隐蔽选择 blueprint／fold／call／raise 偏置后续策略 | 小型博弈验证；偏置参数是工程选择；不是安全子博弈求解或完整 Pluribus 参数复现 |
+| `texas_strategy.mushroom_abstraction`、`card_buckets` | 蘑菇局的相对座位、筹码档、当前手行动、翻前 169／每街翻后 200 桶；建议映射回合法实际金额 | 有损、不完全记忆、有限视野近似；尚无实局质量认证，见[上下文模型](mushroom-context.md) |
+| `texas_strategy.search` | 小博弈全范围公共根；各活跃玩家隐蔽选择 blueprint／fold／call／raise 后续策略；精确或 MCCFR 抽样尾值 | 八人抽样已验证但需要外部提供公共信念；偏置参数是工程选择；不是安全求解或完整 Pluribus 复现 |
 | `texas_strategy.evaluation` | 信息集一致的精确最佳响应、NashConv、固定对手下的成对抽样比较 | 精确枚举有节点预算；超限不返回伪造的完整结果 |
 
-一次训练迭代固定策略，再更新每位玩家的遗憾和平均策略。预算中断会丢弃未完成迭代并回滚 RNG，使 checkpoint 续训与同种子连续训练一致。CLI 报告实际完成迭代、访问节点、时间和停止原因，不把请求的迭代数冒充完成量。
+原 `cfr/mccfr` 每次训练迭代固定策略，再更新每位玩家的遗憾和平均策略；新增 `pluribus` 按补充伪代码顺序更新玩家，使用独立的策略积累与周期折扣。预算中断会丢弃未完成迭代并回滚 RNG，使 checkpoint 续训与同种子连续训练一致。CLI 报告实际完成迭代、访问节点、时间和停止原因，不把请求的迭代数冒充完成量。
 
-Blueprint 将规则版本、人数、算法、种子、迭代数和行动支持与策略绑定；当前算法版本为 `algorithm_version="tabular-cfr-v1"`。`chance_sampling` 区分有限游戏的 `enumerated` 与德州 MCCFR 的精确分布快捷采样 `game_exact`，checkpoint 拒绝跨采样接口续训。未训练信息集可显式使用均匀回退来做研究 rollout；这不等于策略覆盖。`--require-coverage` 会拒绝这种回退。行动频率、行动 EV、策略覆盖率是不同指标。
+Blueprint 将规则版本、人数、算法、种子、迭代数和行动支持与策略绑定；原对照算法版本为 `algorithm_version="tabular-cfr-v1"`，新增主线为 `pluribus-iteration-schedule-v1`。`chance_sampling` 区分有限游戏的 `enumerated` 与德州 MCCFR 的精确分布快捷采样 `game_exact`，checkpoint 拒绝跨采样接口续训。未训练信息集可显式使用均匀回退来做研究 rollout；这不等于策略覆盖。`--require-coverage` 会拒绝这种回退。行动频率、行动 EV、策略覆盖率是不同指标。
 
 ## 命令行与工件
 
@@ -42,6 +45,8 @@ uv run --frozen python -m texas_strategy.cli resume \
 ```
 
 `resume --iterations` 表示新增迭代数；算法、迭代权重、种子和 RNG 从 checkpoint 恢复，不能在续训时偷换算法。所有工件都校验当前游戏和规则配置。Blueprint、checkpoint、report 输出不能使用同一路径；report 不能覆盖输入工件。
+
+新 checkpoint 使用紧凑 JSON schema 2，共享动作列表并移除每行重复字段名，完整保留累计值与 RNG；继续支持 schema 1 导入。Blueprint 格式不变。模型规则版本与文件 schema 是两项不同的兼容性检查，换信息集编码不能仅靠换文件格式续训。
 
 另外两个有限游戏实验的复现命令：
 
@@ -82,6 +87,14 @@ Hold'em 的 `--small-blind`、`--big-blind`、`--button`、`--bet-fractions`、`
 `evaluate --mode sampled` 默认比较“均匀策略”与“仅替换指定座位的候选策略”，其余座位固定为均匀策略；`--baseline` 可改用另一份相同规则的 blueprint。每对模拟共享随机流，输出候选相对基线的净筹码差和成对抽样标准误。这不是最坏情况可剥削度，也不能单凭击败均匀对手证明策略质量。可用 `--max-nodes`、`--seconds` 限制所有命令；错误返回非零退出码，预算不足的精确评测不会输出部分树当作精确答案。
 
 ## 已执行实验
+
+2026-11-01 增加八人蘑菇的抽样后续搜索，代码入口为 `solve_subgame(..., algorithm="mccfr", sampled_rollouts=True)`，默认仍保留小博弈精确尾值。执行 `uv run --frozen python training/verify_sampled_search.py` 可重跑，当前原始结果见 [sampled-search.json](experiments/sampled-search.json)。该脚本含断言，失败返回非零退出码。
+
+- Kuhn：先以 Pluribus 训练 3,000 轮，再执行 3,000 轮深度 1 的抽样搜索，使用六个完整公共隐藏世界。独立精确求解搜索子博弈的最佳响应，可剥削度为 0.009675，策略值约 -0.054529；无均匀回退。此处数值只属于这个有限子博弈。
+- 八人蘑菇：每人 800 分、两手视野、八个**合成**隐藏世界、**合成均匀**后续策略，32 轮约 10.39 秒，完成 1,568 条后续轨迹、57,757 个尾部节点。原精确尾值在 10,000 节点预算内无法完成首轮。两个预算不同，不能据此计算加速倍数；这些是一次本机测量，不是 p95 或实战收益。
+- 轨迹样本不作为永久叶值缓存；固定后续策略的一次分布查询只在抽样和动作验证之间复用，最多保留一个状态，不复用随机收益。少于四人的提前结束、下一手续局与净积分守恒纳入测试。
+
+抽样减少了未来发牌／行动的枚举成本，但不自动提供可信根分布、成熟 blueprint 或搜索收敛。缺少后续策略覆盖仍拒绝求解；预算未训练到请求的信息集时仍返回不支持，不填充均匀建议。真实 WPK 重建、八人全范围与实时延迟验收仍待完成。
 
 完整数值、规则标识、工件校验和、阶段预算与实际耗时见 [offline-baseline.json](experiments/offline-baseline.json)。2026-10-31 在当前云环境运行，训练种子 `20261031`，uniform-fallback 基线也纳入评测。各阶段均完成请求迭代，没有时间或节点预算截断。训练工件留在 `/tmp`，仓库仅保存小型汇总。
 

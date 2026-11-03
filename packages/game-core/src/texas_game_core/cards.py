@@ -221,8 +221,8 @@ def estimate_equity(
     if len(hero_cards) != 2 or len(board_cards) not in (0, 3, 4, 5):
         raise ValueError("hero requires two cards; board requires zero, three, four or five")
     known = set(validate_cards(hero_cards + board_cards))
-    if type(opponents) is not int or not 1 <= opponents <= 5:
-        raise ValueError("opponents must be an integer from one to five")
+    if type(opponents) is not int or not 1 <= opponents <= 7:
+        raise ValueError("opponents must be an integer from one to seven")
     if type(samples) is not int or not 1 <= samples <= MAX_EQUITY_SAMPLES:
         raise ValueError(f"samples must be an integer from one to {MAX_EQUITY_SAMPLES}")
     if type(seed) is not int:

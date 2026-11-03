@@ -45,6 +45,7 @@ class MushroomRules:
     insufficient_policy: str | None = None
     freeze_policy: str | None = None
     remainder_policy: str | None = None
+    settlement_policy: str | None = None
 
     def __post_init__(self) -> None:
         _integer(self.base_points, "base_points", 1)
@@ -85,6 +86,7 @@ class MushroomState:
     rules_version: str
     pool: int = 0
     player_net: tuple[tuple[str, int], ...] = ()
+    outstanding_contributions: tuple[tuple[str, int], ...] = ()
     frozen: bool = True
     hand_id: str | None = None
     small_blind: str | None = None
@@ -94,7 +96,7 @@ class MushroomState:
     version: int = 0
 
     def check_conservation(self) -> bool:
-        """All net transfers since an initially empty escrow must sum to zero."""
+        """The pool balances all recorded contributions, including an opening anchor."""
         if isinstance(self.pool, bool) or not isinstance(self.pool, int) or self.pool < 0:
             return False
         if len({player for player, _ in self.player_net}) != len(self.player_net):
@@ -107,7 +109,16 @@ class MushroomState:
             for player, value in self.player_net
         ):
             return False
-        return self.pool + sum(value for _, value in self.player_net) == 0
+        contributions = dict(self.outstanding_contributions)
+        if len(contributions) != len(self.outstanding_contributions) or any(
+            not isinstance(player, str) or not player.strip() or type(value) is not int or value < 0
+            for player, value in contributions.items()
+        ):
+            return False
+        return (
+            self.pool + sum(value for _, value in self.player_net) == 0
+            and sum(contributions.values()) == self.pool
+        )
 
 
 @dataclass(frozen=True)
@@ -181,6 +192,9 @@ def apply_mushroom_event(
                 if chips[player] < due:
                     raise UnsupportedRuleError("Insufficient chips: reject the entire contribution")
                 changes[player] = -due
+        outstanding = dict(state.outstanding_contributions)
+        for player, amount in changes.items():
+            outstanding[player] = outstanding.get(player, 0) - amount
         return _finish(
             state,
             changes,
@@ -188,28 +202,46 @@ def apply_mushroom_event(
             hand_id=event.hand_id,
             small_blind=event.small_blind,
             last_participants=players,
+            outstanding_contributions=tuple(sorted(outstanding.items())),
         )
     if event.kind == "settle_hand":
         if event.hand_id is None or event.hand_id != state.hand_id:
             raise ValueError("Settlement must reference the open hand")
-        if event.outcome != "sole_main_pot":
+        if event.outcome not in {"sole_main_pot", "split_main_pot"}:
             raise UnsupportedRuleError(
                 "Split pots, side pots and unknown award eligibility omitted"
             )
-        if event.winner not in state.last_participants:
+        if event.outcome == "sole_main_pot" and event.winner not in state.last_participants:
             raise ValueError("Winner must be a dealt participant")
-        award = event.winner == state.small_blind and not state.frozen and state.pool > 0
+        if event.outcome == "split_main_pot" and event.winner is not None:
+            raise ValueError("Split main pot cannot declare a sole winner")
+        award = (
+            event.outcome == "sole_main_pot"
+            and event.winner == state.small_blind
+            and not state.frozen
+            and state.pool > 0
+        )
         result = _finish(
             state,
             {event.winner: state.pool} if award else {},
             hand_id=None,
             small_blind=None,
             completed_hands=(*state.completed_hands, event.hand_id),
+            outstanding_contributions=() if award else state.outstanding_contributions,
         )
         return replace(result, reveal_required=(event.winner,) if award else ())
     if event.kind == "end_session":
         if state.hand_id is not None:
             raise ValueError("Settle the final hand before ending the session")
+        if rules.settlement_policy == "refund_contributions":
+            return _finish(
+                state,
+                dict(state.outstanding_contributions),
+                outstanding_contributions=(),
+                ended=True,
+            )
+        if rules.settlement_policy is not None:
+            raise UnsupportedRuleError("Unsupported session settlement policy")
         if state.pool and not state.last_participants:
             raise UnsupportedRuleError("Final hand participants are unknown")
         if rules.remainder_policy not in {"participant_order", "reject"}:
@@ -223,21 +255,40 @@ def apply_mushroom_event(
                 player: each + int(index < remainder)
                 for index, player in enumerate(state.last_participants)
             }
-        return _finish(state, changes, ended=True)
+        return _finish(state, changes, outstanding_contributions=(), ended=True)
     raise ValueError(f"Unknown mushroom event kind: {event.kind!r}")
 
 
 class MushroomLedger:
-    """In-memory event log. Replay from events; persist the log at the service layer.
+    """In-memory event log replayed from its explicit opening contributions.
 
     Transfers are deltas in this separate escrow ledger. If another account
     source already includes them, do not add these deltas to that source again.
-    Duplicate deliveries return no transfers or reveal requests.
+    Opening contributions are already paid, not new transfer events. Persist
+    both the opening anchor and subsequent events. Duplicates return no transfers.
     """
 
-    def __init__(self, rules: MushroomRules) -> None:
+    def __init__(
+        self, rules: MushroomRules, *, opening_contributions: Mapping[str, int] | None = None
+    ) -> None:
         self.rules = rules
-        self._state = MushroomState(rules_version=rules.version)
+        contributions = {}
+        if opening_contributions is not None:
+            if not isinstance(opening_contributions, Mapping):
+                raise ValueError("Opening contributions must map players to paid amounts")
+            for player, amount in opening_contributions.items():
+                _identifier(player, "opening contributor")
+                _integer(amount, "opening contribution")
+                if amount:
+                    contributions[player] = amount
+        outstanding = tuple(sorted(contributions.items()))
+        self._opening_state = MushroomState(
+            rules_version=rules.version,
+            pool=sum(contributions.values()),
+            player_net=tuple((player, -amount) for player, amount in outstanding),
+            outstanding_contributions=outstanding,
+        )
+        self._state = self._opening_state
         self._events: dict[str, MushroomEvent] = {}
 
     @property
@@ -246,6 +297,13 @@ class MushroomLedger:
 
     def snapshot(self) -> MushroomState:
         return self._state
+
+    def fork(self) -> "MushroomLedger":
+        candidate = MushroomLedger(self.rules)
+        candidate._opening_state = self._opening_state
+        candidate._state = self._state
+        candidate._events = self._events.copy()
+        return candidate
 
     def record(self, event: MushroomEvent) -> MushroomTransition:
         previous = self._events.get(event.event_id)
@@ -259,7 +317,10 @@ class MushroomLedger:
         return result
 
     def rebuild(self, events: Sequence[MushroomEvent]) -> MushroomState:
-        candidate = MushroomLedger(self.rules)
+        candidate = MushroomLedger(
+            self.rules,
+            opening_contributions=dict(self._opening_state.outstanding_contributions),
+        )
         for event in events:
             candidate.record(event)
         self._events, self._state = candidate._events, candidate._state
@@ -288,7 +349,7 @@ class MushroomLedger:
         )
 
     def settle_hand(
-        self, event_id: str, hand_id: str, winner: str, *, outcome: str
+        self, event_id: str, hand_id: str, winner: str | None, *, outcome: str
     ) -> MushroomTransition:
         return self.record(
             MushroomEvent(

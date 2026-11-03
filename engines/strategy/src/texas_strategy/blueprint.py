@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from texas_strategy.cfr import Trainer
 
 SCHEMA_VERSION = 1
+CHECKPOINT_SCHEMA_VERSION = 2
 DEFAULT_MAX_BYTES = 64 * 1024 * 1024
 
 
@@ -95,9 +96,8 @@ def _read(path: str | Path, *, kind: str, max_bytes: int) -> dict[str, Any]:
         raise ValueError("Artifact checksum missing or malformed")
     if not hmac.compare_digest(digest, _checksum(document)):
         raise ValueError("Artifact checksum mismatch")
-    if (
-        type(document.get("schema_version")) is not int
-        or document["schema_version"] != SCHEMA_VERSION
+    if type(document.get("schema_version")) is not int or document["schema_version"] not in (
+        (SCHEMA_VERSION, CHECKPOINT_SCHEMA_VERSION) if kind == "checkpoint" else (SCHEMA_VERSION,)
     ):
         raise ValueError("Unsupported artifact schema version")
     if document.get("kind") != kind:
@@ -117,6 +117,7 @@ def _integer(value: Any, label: str, *, minimum: int = 0) -> int:
 
 
 def _metadata(metadata: Any, game: Any = None) -> dict[str, Any]:
+    is_pluribus = isinstance(metadata, dict) and metadata.get("algorithm") == "pluribus"
     _fields(
         metadata,
         {
@@ -130,7 +131,8 @@ def _metadata(metadata: Any, game: Any = None) -> dict[str, Any]:
             "iterations",
             "seed",
             "exploration",
-        },
+        }
+        | ({"pluribus"} if is_pluribus else set()),
         "metadata",
     )
     for field in ("game_id", "rules_version"):
@@ -140,11 +142,18 @@ def _metadata(metadata: Any, game: Any = None) -> dict[str, Any]:
     _integer(metadata["iterations"], "iterations")
     if type(metadata["seed"]) is not int:
         raise ValueError("Invalid seed")
-    if metadata["algorithm"] not in ("cfr", "mccfr"):
+    if metadata["algorithm"] not in ("cfr", "mccfr", "pluribus"):
         raise ValueError("Unknown training algorithm")
     from texas_strategy.cfr import ALGORITHM_VERSION
 
-    if metadata["algorithm_version"] != ALGORITHM_VERSION:
+    version = ALGORITHM_VERSION
+    if is_pluribus:
+        from texas_strategy.pluribus import PluribusConfig
+
+        version = PluribusConfig.from_dict(metadata["pluribus"]).algorithm_version
+        if metadata["weighting"] != "linear" or metadata["exploration"] != 0:
+            raise ValueError("Invalid Pluribus weighting or exploration")
+    if metadata["algorithm_version"] != version:
         raise ValueError("Unsupported training algorithm version")
     if metadata["chance_sampling"] not in ("enumerated", "game_exact"):
         raise ValueError("Unknown chance sampling method")
@@ -156,18 +165,31 @@ def _metadata(metadata: Any, game: Any = None) -> dict[str, Any]:
     if (
         type(exploration) not in (int, float)
         or not isfinite(exploration)
-        or not 0 < exploration <= 1
+        or (exploration != 0 if is_pluribus else not 0 < exploration <= 1)
     ):
         raise ValueError("Invalid exploration probability")
     if game is not None:
         for field in ("game_id", "rules_version", "num_players"):
             if metadata[field] != getattr(game, field, None):
                 raise ValueError(f"Artifact is incompatible with game {field}")
+        validate = getattr(game, "validate_checkpoint_iterations", None)
+        if validate is not None:
+            validate(metadata["iterations"])
     return dict(metadata)
 
 
 def _trainer_metadata(trainer: "Trainer") -> dict[str, Any]:
     from texas_strategy.cfr import ALGORITHM_VERSION
+
+    if (
+        getattr(trainer, "_uses_root_proposal", False)
+        or getattr(trainer.game, "sample_training_root", None) is not None
+    ):
+        raise ValueError("Local training-root proposals cannot be persisted as core artifacts")
+    extra = {}
+    if trainer.algorithm == "pluribus":
+        ALGORITHM_VERSION = trainer.pluribus.algorithm_version
+        extra["pluribus"] = trainer.pluribus.to_dict()
 
     return _metadata(
         {
@@ -178,7 +200,7 @@ def _trainer_metadata(trainer: "Trainer") -> dict[str, Any]:
             "algorithm_version": ALGORITHM_VERSION,
             "chance_sampling": (
                 "game_exact"
-                if trainer.algorithm == "mccfr"
+                if trainer.algorithm in ("mccfr", "pluribus")
                 and callable(getattr(trainer.game, "sample_chance_outcome", None))
                 else "enumerated"
             ),
@@ -186,7 +208,9 @@ def _trainer_metadata(trainer: "Trainer") -> dict[str, Any]:
             "iterations": trainer.iterations,
             "seed": trainer.seed,
             "exploration": trainer.exploration,
-        }
+            **extra,
+        },
+        trainer.game,
     )
 
 
@@ -296,23 +320,67 @@ class Blueprint:
 
 
 def save_checkpoint(trainer: "Trainer", path: str | Path) -> None:
+    action_sets = sorted({entry.actions for entry in trainer._table.values()})
+    action_index = {actions: i for i, actions in enumerate(action_sets)}
     document = {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": CHECKPOINT_SCHEMA_VERSION,
         "kind": "checkpoint",
         "metadata": _trainer_metadata(trainer),
         "rng_state": trainer._rng.getstate(),
+        "training_context": getattr(trainer.game, "checkpoint_context", None),
+        "action_sets": action_sets,
         "entries": [
-            {
-                "player": player,
-                "information_key": key,
-                "actions": list(entry.actions),
-                "regrets": list(entry.regrets),
-                "strategy_sum": list(entry.strategy_sum),
-            }
+            [
+                player,
+                key,
+                action_index[entry.actions],
+                entry.regrets,
+                entry.strategy_sum,
+                *(
+                    [trainer._betting_rounds[(player, key)]]
+                    if trainer.algorithm == "pluribus"
+                    else []
+                ),
+            ]
             for (player, key), entry in sorted(trainer._table.items())
         ],
     }
     _write(path, document)
+
+
+def _checkpoint_entries(document, *, pluribus):
+    """Expand one compact row at a time; keep the strict v1 record validation."""
+    entries = document["entries"]
+    if not isinstance(entries, list):
+        raise ValueError("Checkpoint entries must be an array")
+    if document["schema_version"] == 1:
+        yield from entries
+        return
+    action_sets = document["action_sets"]
+    if not isinstance(action_sets, list):
+        raise ValueError("Checkpoint action sets must be an array")
+    unique = set()
+    for actions in action_sets:
+        if not isinstance(actions, list) or not actions:
+            raise ValueError("Invalid checkpoint action set")
+        PolicyEntry(tuple(actions), (1 / len(actions),) * len(actions))
+        if tuple(actions) in unique:
+            raise ValueError("Duplicate checkpoint action set")
+        unique.add(tuple(actions))
+    for row in entries:
+        if not isinstance(row, list) or len(row) != (6 if pluribus else 5):
+            raise ValueError("Invalid compact checkpoint row")
+        index = _integer(row[2], "action set index")
+        if index >= len(action_sets):
+            raise ValueError("Invalid checkpoint action set index")
+        yield {
+            "player": row[0],
+            "information_key": row[1],
+            "actions": action_sets[index],
+            "regrets": row[3],
+            "strategy_sum": row[4],
+            **({"betting_round": row[5]} if pluribus else {}),
+        }
 
 
 def load_checkpoint(
@@ -320,25 +388,40 @@ def load_checkpoint(
 ) -> "Trainer":
     from texas_strategy.cfr import Trainer, _TableEntry
 
+    if getattr(game, "sample_training_root", None) is not None:
+        raise ValueError("Core checkpoints cannot be restored into a local training-root proposal")
     document = _read(path, kind="checkpoint", max_bytes=max_bytes)
-    _fields(document, {"schema_version", "kind", "metadata", "entries", "rng_state"}, "checkpoint")
+    _fields(
+        document,
+        {"schema_version", "kind", "metadata", "entries", "rng_state"}
+        | (
+            {"action_sets", "training_context"}
+            if document["schema_version"] == CHECKPOINT_SCHEMA_VERSION
+            else set()
+        ),
+        "checkpoint",
+    )
     metadata = _metadata(document["metadata"], game)
+    if document["schema_version"] == CHECKPOINT_SCHEMA_VERSION and document[
+        "training_context"
+    ] != getattr(game, "checkpoint_context", None):
+        raise ValueError("Checkpoint training context does not match the starting game")
     trainer = Trainer(
         game,
         algorithm=metadata["algorithm"],
         weighting=metadata["weighting"],
         seed=metadata["seed"],
         exploration=metadata["exploration"],
+        pluribus=metadata.get("pluribus"),
     )
+    trainer.iterations = metadata["iterations"]
     if _trainer_metadata(trainer)["chance_sampling"] != metadata["chance_sampling"]:
         raise ValueError("Checkpoint chance sampling does not match this game implementation")
-    trainer.iterations = metadata["iterations"]
-    if not isinstance(document["entries"], list):
-        raise ValueError("Checkpoint entries must be an array")
-    for record in document["entries"]:
+    for record in _checkpoint_entries(document, pluribus=trainer.algorithm == "pluribus"):
         _fields(
             record,
-            {"player", "information_key", "actions", "regrets", "strategy_sum"},
+            {"player", "information_key", "actions", "regrets", "strategy_sum"}
+            | ({"betting_round"} if trainer.algorithm == "pluribus" else set()),
             "checkpoint entry",
         )
         key = _entry_key(record, game.num_players)
@@ -362,6 +445,11 @@ def load_checkpoint(
         trainer._table[key] = _TableEntry(
             actions, list(record["regrets"]), list(record["strategy_sum"])
         )
+        if trainer.algorithm == "pluribus":
+            stage = _integer(record["betting_round"], "betting_round")
+            if stage > game.final_betting_round:
+                raise ValueError("Checkpoint betting round exceeds game boundary")
+            trainer._betting_rounds[key] = stage
     state = document["rng_state"]
     if (
         not isinstance(state, list)

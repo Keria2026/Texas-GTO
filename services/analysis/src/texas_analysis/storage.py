@@ -28,7 +28,8 @@ class SessionStore:
         with self.connection() as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS sessions (
-                  id TEXT PRIMARY KEY, config TEXT NOT NULL, seed INTEGER NOT NULL);
+                  id TEXT PRIMARY KEY, config TEXT NOT NULL, seed INTEGER NOT NULL,
+                  rules_version TEXT);
                 CREATE TABLE IF NOT EXISTS events (
                   session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
                   seq INTEGER NOT NULL, action TEXT NOT NULL,
@@ -38,6 +39,8 @@ class SessionStore:
                   event_id TEXT NOT NULL, payload TEXT NOT NULL, response TEXT NOT NULL,
                   PRIMARY KEY(session_id,event_id));
             """)
+            if "rules_version" not in {row[1] for row in db.execute("PRAGMA table_info(sessions)")}:
+                db.execute("ALTER TABLE sessions ADD COLUMN rules_version TEXT")
 
     @contextmanager
     def connection(self):
@@ -51,11 +54,17 @@ class SessionStore:
 
     def _read(self, db, session_id):
         UUID(session_id)
-        record = db.execute("SELECT config,seed FROM sessions WHERE id=?", (session_id,)).fetchone()
+        record = db.execute(
+            "SELECT config,seed,rules_version FROM sessions WHERE id=?", (session_id,)
+        ).fetchone()
         if record is None:
             raise KeyError("Unknown session")
         config = GameConfig.model_validate_json(record[0])
         game = make_game(config)
+        if record[2] is None and config.game_id == "mushroom":
+            raise ConflictError("Legacy mushroom session has no rule version; create a new session")
+        if record[2] is not None and record[2] != game.rules_version:
+            raise ConflictError("Saved session uses different rules; create a new session")
         state = game.initial_state()
         events = db.execute(
             "SELECT action FROM events WHERE session_id=? ORDER BY seq", (session_id,)
@@ -68,6 +77,19 @@ class SessionStore:
         with self.connection() as db:
             db.execute("BEGIN")
             return self._read(db, session_id)
+
+    def version(self, session_id):
+        """Read the committed event position without replaying the game."""
+        UUID(session_id)
+        with self.connection() as db:
+            row = db.execute(
+                "SELECT (SELECT COALESCE(MAX(seq)+1,0) FROM events WHERE session_id=s.id) "
+                "FROM sessions AS s WHERE id=?",
+                (session_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError("Unknown session")
+        return row[0]
 
     @staticmethod
     def _snapshot(session_id, config, game, state, version, viewer=None):
@@ -106,8 +128,8 @@ class SessionStore:
         with self.connection() as db:
             db.execute("BEGIN IMMEDIATE")
             db.execute(
-                "INSERT INTO sessions VALUES (?,?,?)",
-                (session_id, request.game.model_dump_json(), request.seed),
+                "INSERT INTO sessions (id,config,seed,rules_version) VALUES (?,?,?,?)",
+                (session_id, request.game.model_dump_json(), request.seed, game.rules_version),
             )
             state, version = self._deal(db, session_id, request.seed, game, game.initial_state(), 0)
             return self._snapshot(session_id, request.game, game, state, version)

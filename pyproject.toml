@@ -19,6 +19,7 @@ dependencies = [
 texas-analysis = "texas_analysis.__main__:main"
 texas-research = "texas_strategy.cli:main"
 texas-wpk-inspect = "texas_wpk.inspect_har:main"
+texas-state = "texas_analysis.portable_state:main"
 
 [dependency-groups]
 dev = ["pytest>=8,<10", "httpx>=0.28,<1", "ruff>=0.11,<1", "jsonschema>=4.23,<5"]

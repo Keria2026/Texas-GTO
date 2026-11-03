@@ -1,7 +1,8 @@
 """Budgeted offline training, resume, evaluation and guarded model adaptation.
 
-Run ``python -m texas_strategy.cli --help``. All artifacts are local JSON; no
-platform connection, live cards, credentials or training service is required.
+Run ``python -m texas_strategy.cli --help``. Research train/resume use legacy
+JSON artifacts; checkpoint-backup exports portable SQLite training snapshots.
+No platform connection, live cards, credentials or training service is required.
 """
 
 from __future__ import annotations
@@ -39,14 +40,32 @@ def _positive(value: str) -> float:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    backup = commands.add_parser(
+        "checkpoint-backup", help="Export a portable SQLite checkpoint without loading its table"
+    )
+    backup.add_argument(
+        "--source", type=Path, required=True, help="Source SQLite training database"
+    )
+    backup.add_argument("--output", type=Path, required=True, help="New standalone SQLite snapshot")
+    backup.set_defaults(report=None)
     for name in ("train", "resume", "evaluate", "adapt"):
         command = commands.add_parser(name)
-        command.add_argument("--game", choices=("kuhn", "leduc", "holdem"), default="kuhn")
+        command.add_argument(
+            "--game", choices=("kuhn", "leduc", "holdem", "mushroom"), default="kuhn"
+        )
+        command.add_argument(
+            "--session-hands", type=int, help="Explicit mushroom training horizon (default 2)"
+        )
         command.add_argument("--players", type=int, default=2)
-        command.add_argument("--abstraction", choices=("none", "suit_canonical"), default="none")
+        command.add_argument(
+            "--abstraction",
+            choices=("none", "suit_canonical", "mushroom_context", "mushroom_population"),
+            default="none",
+        )
         command.add_argument("--stacks", help="Hold'em integer starting stacks, e.g. 4,4,4")
         command.add_argument("--small-blind", type=int, default=1)
         command.add_argument("--big-blind", type=int, default=2)
+        command.add_argument("--straddle", type=int, help="Fully funded live straddle left of BB")
         command.add_argument("--button", type=int, default=0)
         command.add_argument(
             "--bet-fractions", default="0.5,1.0", help="Hold'em pot fractions; use 'none' for none"
@@ -57,14 +76,21 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--blueprint", type=Path, required=True)
         if name in ("train", "resume"):
             command.add_argument("--iterations", type=_nonnegative, default=1000)
-            command.add_argument("--checkpoint", type=Path, help="Save resumable training state")
+            command.add_argument("--checkpoint", type=Path, help="Save legacy JSON research state")
         if name == "train":
-            command.add_argument("--algorithm", choices=("cfr", "mccfr"), default="cfr")
+            command.add_argument("--algorithm", choices=("cfr", "mccfr", "pluribus"), default="cfr")
             command.add_argument("--weighting", choices=("uniform", "linear"), default="linear")
             command.add_argument("--seed", type=int, default=0)
-            command.add_argument("--exploration", type=float, default=0.06)
+            command.add_argument("--exploration", type=float, default=None)
+            command.add_argument(
+                "--pluribus-config",
+                type=json.loads,
+                help="JSON iteration schedule and regret thresholds for Pluribus",
+            )
         elif name == "resume":
-            command.add_argument("--from-checkpoint", type=Path, required=True)
+            command.add_argument(
+                "--from-checkpoint", type=Path, required=True, help="Legacy JSON checkpoint"
+            )
         elif name == "evaluate":
             command.add_argument("--mode", choices=("exact", "sampled"), default="exact")
             command.add_argument("--baseline", type=Path, help="Sampled comparison baseline")
@@ -93,11 +119,63 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _game(args: argparse.Namespace) -> Any:
+    if args.game == "mushroom":
+        from texas_game_core.mushroom_game import MushroomSessionGame
+
+        if (args.small_blind, args.big_blind, args.straddle) != (2, 4, 8):
+            raise ValueError("Mushroom model requires --small-blind 2 --big-blind 4 --straddle 8")
+        if (
+            args.abstraction not in ("none", "mushroom_context", "mushroom_population")
+            or args.bet_fractions != "0.5,1.0"
+        ):
+            raise ValueError("Mushroom abstraction and action sizes use the current model defaults")
+        if args.abstraction == "mushroom_population":
+            from texas_strategy.mushroom_population import MushroomPopulationGame
+
+            if args.players != 8 or args.stacks is not None or args.button != 0:
+                raise ValueError("Population requires eight model seats and its declared openings")
+            game = MushroomPopulationGame.default(horizon=args.session_hands or 2)
+            if args.command == "resume":
+                from texas_strategy.blueprint import DEFAULT_MAX_BYTES, _read
+
+                document = _read(
+                    args.from_checkpoint, kind="checkpoint", max_bytes=DEFAULT_MAX_BYTES
+                )
+                saved = MushroomPopulationGame.from_context(document.get("training_context"))
+                if saved.horizon != game.horizon:
+                    raise ValueError(
+                        "Population checkpoint horizon does not match the requested game"
+                    )
+                return saved
+            return game
+        stacks = (
+            (800,) * args.players
+            if args.stacks is None
+            else tuple(map(int, args.stacks.split(",")))
+        )
+        if len(stacks) != args.players:
+            raise ValueError("--stacks must match --players")
+        game = MushroomSessionGame(
+            stacks,
+            button=args.button,
+            horizon=args.session_hands if args.session_hands is not None else 2,
+        )
+        if args.abstraction == "mushroom_context":
+            from texas_strategy.mushroom_abstraction import MushroomContextGame
+
+            return MushroomContextGame(game)
+        return game
+    if args.abstraction in ("mushroom_context", "mushroom_population"):
+        raise ValueError("Mushroom abstractions apply only to mushroom sessions")
+    if args.session_hands is not None:
+        raise ValueError("--session-hands applies only to mushroom")
     if args.game != "holdem":
         if args.abstraction != "none":
             raise ValueError("Suit canonicalization is available only for Hold'em")
         if args.stacks is not None:
             raise ValueError("--stacks is available only for Hold'em")
+        if args.straddle is not None:
+            raise ValueError("--straddle is available only for Hold'em")
         if (args.small_blind, args.big_blind, args.button, args.bet_fractions) != (
             1,
             2,
@@ -120,6 +198,7 @@ def _game(args: argparse.Namespace) -> Any:
         stacks,
         small_blind=args.small_blind,
         big_blind=args.big_blind,
+        straddle=args.straddle,
         button=args.button,
         bet_fractions=fractions,
     )
@@ -176,6 +255,16 @@ def _warnings(game: Any) -> list[str]:
             "Exact private-card information creates sparse tabular coverage; "
             "this run is a budget/throughput experiment, not a usable Hold'em strategy."
         )
+    if game.game_id == "mushroom":
+        warnings.append(
+            "Finite-horizon mushroom model refunds remaining contributions at its horizon; "
+            "live-session continuation, re-straddle and strategy strength remain unverified."
+        )
+        if getattr(game, "abstraction_version", None) == "mushroom-context-v1":
+            warnings.append(
+                "Lossy card/chip contexts forget completed hands; "
+                "matched policies remain approximate."
+            )
     return warnings
 
 
@@ -189,9 +278,12 @@ def _train(args: argparse.Namespace, game: Any) -> dict[str, Any]:
             weighting=args.weighting,
             seed=args.seed,
             exploration=args.exploration,
+            pluribus=args.pluribus_config,
         )
     if not getattr(game, "supports_exact_enumeration", True) and trainer.algorithm == "cfr":
-        raise ValueError("Hold'em requires --algorithm mccfr; full-tree CFR is not supported")
+        raise ValueError(
+            "Full card games require --algorithm mccfr or pluribus; full-tree CFR is not supported"
+        )
     diagnostics = trainer.train(
         args.iterations, max_nodes=args.max_nodes, deadline_seconds=args.seconds
     )
@@ -238,7 +330,9 @@ def _evaluate(args: argparse.Namespace, game: Any) -> dict[str, Any]:
     }
     if args.mode == "exact":
         if not getattr(game, "supports_exact_enumeration", True):
-            raise ValueError("Hold'em exact evaluation is not supported; select --mode sampled")
+            raise ValueError(
+                "Full card-game exact evaluation is not supported; select --mode sampled"
+            )
         if args.baseline is not None:
             raise ValueError("--baseline is used only with --mode sampled")
         report["evaluation"] = evaluate_strategy(
@@ -315,14 +409,25 @@ def _adapt(args: argparse.Namespace, game: Any) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        _validate_paths(args)
-        game = _game(args)
-        if args.command == "evaluate":
-            report = _evaluate(args, game)
-        elif args.command == "adapt":
-            report = _adapt(args, game)
+        if args.command == "checkpoint-backup":
+            from texas_strategy.training_store import backup_checkpoint
+
+            backup_checkpoint(args.source, args.output)
+            report = {
+                "schema_version": 1,
+                "command": args.command,
+                "checkpoint": str(args.output),
+                "checkpoint_bytes": args.output.stat().st_size,
+            }
         else:
-            report = _train(args, game)
+            _validate_paths(args)
+            game = _game(args)
+            if args.command == "evaluate":
+                report = _evaluate(args, game)
+            elif args.command == "adapt":
+                report = _adapt(args, game)
+            else:
+                report = _train(args, game)
         serialized = json.dumps(report, indent=2, sort_keys=True, allow_nan=False)
         if args.report is not None:
             args.report.parent.mkdir(parents=True, exist_ok=True)

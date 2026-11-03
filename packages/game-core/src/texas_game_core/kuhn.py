@@ -34,6 +34,10 @@ def _deals(players: int) -> tuple[tuple[str, float], ...]:
 class KuhnPoker:
     num_players: int = 2
     game_id: ClassVar[str] = "kuhn"
+    final_betting_round: ClassVar[int] = 0
+
+    def betting_round(self, state: KuhnState) -> int:
+        return 0
 
     def __post_init__(self) -> None:
         if type(self.num_players) is not int or not 2 <= self.num_players <= 6:

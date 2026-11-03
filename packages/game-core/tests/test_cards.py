@@ -66,6 +66,12 @@ def test_normalization_duplicates_and_required_card_count():
         evaluate_five("As Ks Qs Js Ts 9s".split())
 
 
+def test_eight_player_equity_shares_a_board_royal_flush():
+    result = estimate_equity(["2c", "3c"], "As Ks Qs Js Ts".split(), opponents=7, samples=24)
+    assert result.equity == pytest.approx(1 / 8)
+    assert result.opponents == 7
+
+
 def _independent_five(cards):
     # Slow subset oracle uses sorted multiplicity groups and explicit straight
     # sequences, independently of the production direct seven-card evaluator.
@@ -164,7 +170,7 @@ def test_explicit_joint_ranges_condition_on_compatibility_without_sequential_bia
         {"hero": ["As", "Kd"], "samples": 0},
         {"hero": ["As", "Kd"], "samples": 1},
         {"hero": ["As", "Kd"], "samples": True},
-        {"hero": ["As", "Kd"], "opponents": 6},
+        {"hero": ["As", "Kd"], "opponents": 8},
     ],
 )
 def test_invalid_equity_inputs_rejected(kwargs):

@@ -133,6 +133,102 @@ def test_old_business_client_no_unsolicited_state(tmp_path):
         assert ws.receive_json() == {"type": "pong"}
 
 
+def test_complete_observation_still_requires_rule_money_and_model_anchors(tmp_path):
+    snap = copy.deepcopy(next(e for e in fixture()["events"] if e["kind"] == "snapshot"))
+    snap["sequence"] = "1"
+    snap["data"].update(
+        history_complete=True,
+        hero_cards=["As", "Kd"],
+        board=[],
+        street="preflop",
+        players=[
+            {"player_id": "hero", "seat": 1, "stack": 800},
+            {"player_id": "player-1", "seat": 2, "stack": 800},
+        ],
+        turn={
+            "player_id": "hero",
+            "legal_actions": ["FOLD", "CALL", "RAISE"],
+            "call_amount": 8,
+            "min_raise_reported": 16,
+            "max_raise_reported": 800,
+        },
+    )
+    with client_for(tmp_path) as client, connect(client) as ws:
+        auth(ws)
+        ws.send_json(wire([snap]))
+        assert ws.receive_json()["type"] == "capture.ack"
+        result = ws.receive_json()
+        assert result["source_id"] == snap["source_id"]
+        assert result["through_sequence"] == "1"
+        analysis = result["analysis"]
+        assert analysis["status"] == "unsupported"
+        assert analysis["reason"] == "unverified_rules_and_strategy_coverage"
+        assert analysis["actions"] == []
+        assert set(analysis["missing_fields"]) == {
+            "verified_rule_profile",
+            "supported_strategy_model",
+            "hand_participants",
+            "button_seat",
+            "aligned_starting_stacks",
+            "mushroom_ledger_anchor",
+            "model_context_mapping",
+        }
+
+
+def test_observed_profiles_are_durable_atomic_and_negotiated(tmp_path):
+    events = fixture()["events"]
+    with client_for(tmp_path) as client, connect(client) as ws:
+        ws.send_json({"type": "auth", "token": TOKEN, "capabilities": ["capture_profiles_v1"]})
+        assert "capture_profiles_v1" in ws.receive_json()["capabilities"]
+        ws.send_json(wire(events))
+        assert ws.receive_json()["type"] == "capture.ack"
+        report = ws.receive_json()
+        assert report["type"] == "capture.profiles"
+        assert report["quality"] == "observed_behavior_learning"
+        assert report["identity_scope"] == "origin_source"
+        assert report["through_sequence"] == events[-1]["sequence"]
+        assert sum(p["action_observations"] for p in report["players"]) > 0
+        # Repeated batches must not teach the same action twice.
+        ws.send_json(wire(events))
+        assert ws.receive_json()["type"] == "capture.ack"
+        assert ws.receive_json() == report
+        ws.send_json(wire(events[:1]))
+        assert ws.receive_json()["through_sequence"] == "1"
+        ws.send_json({"type": "ping"})
+        assert ws.receive_json() == {"type": "pong"}
+    store = NetworkStore(tmp_path / "capture.sqlite3", stream="capture")
+    assert store.profiles(ORIGIN, "synthetic-wpk") == report
+    assert store.profiles(ORIGIN + "b", "synthetic-wpk") is None
+    conflict = copy.deepcopy(events[-1])
+    conflict["sequence"] = str(int(conflict["sequence"]) + 2)
+    with pytest.raises(ValueError, match="Sequence gap"):
+        store.append(ORIGIN, batch([conflict]))
+    assert store.profiles(ORIGIN, "synthetic-wpk") == report
+
+
+def test_existing_capture_history_is_backfilled_once(tmp_path):
+    events = fixture()["events"]
+    path = tmp_path / "capture.sqlite3"
+    store = NetworkStore(path, stream="capture")
+    store.append(ORIGIN, batch(events))
+    expected = store.profiles(ORIGIN, "synthetic-wpk")
+    # Simulate an old database containing raw receipts but no learning projection.
+    with sqlite3.connect(path) as db:
+        tables = [
+            r[0]
+            for r in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' "
+                "AND name LIKE 'capture_learning_%'"
+            )
+        ]
+        assert tables
+        for table in tables:
+            db.execute(f'DROP TABLE "{table}"')
+    for _ in range(2):
+        restored = NetworkStore(path, stream="capture")
+        assert restored.profiles(ORIGIN, "synthetic-wpk") == expected
+
+
 def test_atomic_conflicting_replay_and_sequence_gap(tmp_path):
     events = fixture()["events"]
     store = NetworkStore(tmp_path / "capture.sqlite3", stream="capture")

@@ -4,11 +4,12 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Event, Lock
+from time import monotonic
 from uuid import UUID, uuid4
 
 from texas_strategy.blueprint import Blueprint
 from texas_strategy.cfr import Trainer
-from texas_strategy.evaluation import EvaluationLimitError, evaluate_strategy
+from texas_strategy.evaluation import CancellationError, EvaluationLimitError, evaluate_strategy
 from texas_strategy.provider import PluribusStyleProvider
 from texas_strategy.search import SearchCoverageError, solve_subgame
 
@@ -68,7 +69,11 @@ class ResearchManager:
         try:
             game = make_game(request.game)
             trainer = Trainer(
-                game, algorithm=request.algorithm, weighting=request.weighting, seed=request.seed
+                game,
+                algorithm=request.algorithm,
+                weighting=request.weighting,
+                seed=request.seed,
+                pluribus=request.pluribus,
             )
             diagnostics = trainer.train(
                 request.iterations,
@@ -85,10 +90,10 @@ class ResearchManager:
                 trainer.save_checkpoint(target / "checkpoint.json")
                 (target / "game.json").write_text(request.game.model_dump_json(), encoding="utf-8")
                 blueprint_id = job_id
-                if game.game_id == "holdem":
+                if game.game_id in ("holdem", "mushroom"):
                     evaluation = {
                         "quality": "not_evaluated",
-                        "reason": "Full Holdem exact evaluation exceeds the service budget",
+                        "reason": "Full card-game exact evaluation exceeds the service budget",
                     }
                 elif not cancelled.is_set():
                     try:
@@ -178,8 +183,13 @@ class ResearchManager:
                 event.set()
         self._pool.shutdown(wait=True, cancel_futures=False)
 
+    def has_active_jobs(self):
+        with self._lock:
+            return any(job.status in ("queued", "running") for job in self._jobs.values())
+
 
 def analyze(store: SessionStore, manager: ResearchManager, request: AnalyzeRequest):
+    started = monotonic()
     _, _, game, state, version = store.load(request.session_id)
     if version != request.state_version:
         raise ConflictError("Analysis state version is stale")
@@ -195,10 +205,38 @@ def analyze(store: SessionStore, manager: ResearchManager, request: AnalyzeReque
         actions=[],
         warnings=[],
     )
+    last_checked = float("-inf")
+    changed = False
+
+    def state_changed(*, force=False):
+        nonlocal last_checked, changed
+        now = monotonic()
+        # Poll at most 20 times/second during traversal; every response forces a final check.
+        if not changed and (force or now - last_checked >= 0.05):
+            last_checked = now
+            try:
+                changed = store.version(request.session_id) != version
+            except KeyError:
+                changed = True
+        return changed
+
+    def finish():
+        if state_changed(force=True):
+            raise ConflictError("State changed during analysis; discard this result")
+        if monotonic() - started >= request.deadline_seconds:
+            response.status = "unsupported"
+            response.strategy_source = "none"
+            response.actions = []
+            response.diagnostics = None
+            response.warnings.append("Analysis deadline exceeded; no current recommendation")
+        return response
+
     coverage = PluribusStyleProvider(blueprint).coverage(game.rules_version, game=game, state=state)
     if not coverage.supported:
         response.warnings = list(coverage.reasons)
-        return response
+        return finish()
+    if monotonic() - started >= request.deadline_seconds:
+        return finish()
     probabilities = blueprint.policy.probabilities(game, state)
     actions = tuple(game.legal_actions(state))
     response.strategy_source = "blueprint"
@@ -207,10 +245,24 @@ def analyze(store: SessionStore, manager: ResearchManager, request: AnalyzeReque
         response.warnings.append(
             "Sparse unabstracted Holdem experiment; not a trained six-player GTO model"
         )
-    if request.search:
-        if game.game_id == "holdem":
+    if game.game_id == "mushroom":
+        response.warnings.append(
+            "Finite-horizon mushroom research model; horizon-end refunds approximate continuation "
+            "and do not certify a live-session strategy"
+        )
+        if getattr(game, "abstraction_version", None) == "mushroom-context-v1":
             response.warnings.append(
-                "Full Holdem public-root enumeration unsupported; using covered blueprint"
+                "Approximate card/chip contexts forget completed-hand history; "
+                "matching is not exact "
+                "and current wagers are translated back to legal point amounts"
+            )
+    if request.search:
+        remaining = request.deadline_seconds - (monotonic() - started)
+        if remaining <= 0:
+            return finish()
+        if game.game_id in ("holdem", "mushroom"):
+            response.warnings.append(
+                "Full card-game public-root enumeration unsupported; using covered blueprint"
             )
         else:
             try:
@@ -224,18 +276,21 @@ def analyze(store: SessionStore, manager: ResearchManager, request: AnalyzeReque
                     max_root_nodes=min(request.max_nodes, 100_000),
                     max_rollout_nodes=request.max_nodes,
                     max_nodes=request.max_nodes,
-                    deadline_seconds=request.deadline_seconds,
+                    deadline_seconds=remaining,
+                    should_cancel=state_changed,
                 )
                 actions, probabilities = result.actions, result.probabilities
                 response.strategy_source = "depth_limited_search"
                 response.diagnostics = result.to_dict()
                 response.warnings.extend(result.warnings)
+            except CancellationError as exc:
+                raise ConflictError("State changed during analysis; discard this result") from exc
             except (EvaluationLimitError, SearchCoverageError) as exc:
                 response.warnings.append(f"Search unavailable; using covered blueprint: {exc}")
+    translate = getattr(game, "concrete_action", lambda state, action: action)
     response.actions = [
-        ActionFrequency(action=a, frequency=p) for a, p in zip(actions, probabilities, strict=True)
+        ActionFrequency(action=translate(state, a), frequency=p)
+        for a, p in zip(actions, probabilities, strict=True)
     ]
     response.status = "ready"
-    if store.load(request.session_id)[4] != version:
-        raise ConflictError("State changed during analysis; discard this result")
-    return response
+    return finish()

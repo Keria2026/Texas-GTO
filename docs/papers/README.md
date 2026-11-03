@@ -15,3 +15,5 @@ a1eb563ed2d69c2c1c222c619860190daee394cc32d9ced5e4a8bc4ff7f1b76a  opponent-model
 ```
 
 Pluribus 文件为 7 页（含 1 页出版信息），不含补充材料；中文论文为 14 页。阅读笔记见 [Pluribus](../pluribus-paper.md) 与 [对手建模](../opponent-modeling-paper.md)。CN112691383A 专利全文尚未取得，因此没有将空文件或摘要当作原文归档。
+
+2026-11-01 另行取得并在线核查作者的 [Pluribus 补充材料](https://noambrown.github.io/papers/19-Science-Superhuman_Supp.pdf)，训练核心实现及与原文差异见 [实现记录](../pluribus-implementation.md)。上传正文原始文件未修改。

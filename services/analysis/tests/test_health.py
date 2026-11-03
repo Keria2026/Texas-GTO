@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 def test_health_matches_the_shared_contract_and_fixture():
-    with TestClient(create_app()) as client:
+    with TestClient(create_app(), base_url="http://127.0.0.1") as client:
         response = client.get("/v1/health")
     assert response.status_code == 200
     schema = json.loads(
@@ -24,7 +24,7 @@ def test_health_matches_the_shared_contract_and_fixture():
 
 
 def test_only_explicit_browser_origins_are_allowed():
-    with TestClient(create_app(("http://127.0.0.1:5173",))) as client:
+    with TestClient(create_app(("http://127.0.0.1:5173",)), base_url="http://127.0.0.1") as client:
         allowed = client.get("/v1/health", headers={"origin": "http://127.0.0.1:5173"})
         assert allowed.status_code == 200
         assert allowed.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
@@ -41,5 +41,5 @@ def test_wildcard_origins_cannot_be_configured(origin):
 
 
 def test_private_analysis_requires_a_token():
-    with TestClient(create_app()) as client:
+    with TestClient(create_app(token="explicit-test-token-with-24-characters")) as client:
         assert client.post("/v1/analyze", json={}).status_code == 401

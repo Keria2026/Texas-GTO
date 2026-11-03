@@ -211,3 +211,37 @@ def test_external_state_cannot_hide_fractional_or_duplicated_money_entries():
     assert not MushroomState("v", pool=1.5, player_net=(("a", -1.5),)).check_conservation()
     assert not MushroomState("v", pool=True, player_net=(("a", -1),)).check_conservation()
     assert not MushroomState("v", pool=2, player_net=(("a", -1), ("a", -1))).check_conservation()
+
+
+def test_session_refunds_unawarded_actual_fees_to_every_original_contributor():
+    ledger = MushroomLedger(rules(settlement_policy="refund_contributions"))
+    begin(ledger, "h1", small_blind="a")
+    settle(ledger, "h1", "b")
+    begin(ledger, "h2", players=("b", "c", "d", "e"), small_blind="b")
+    settle(ledger, "h2", "c")
+    assert dict(ledger.snapshot().outstanding_contributions) == {
+        "a": 40,
+        "b": 60,
+        "c": 40,
+        "d": 40,
+        "e": 20,
+    }
+    ended = ledger.end_session("end")
+    assert dict(ended.transfers) == {"a": 40, "b": 60, "c": 40, "d": 40, "e": 20}
+    assert ended.state.pool == 0
+    assert all(amount == 0 for _player, amount in ended.state.player_net)
+    assert ledger.end_session("end").transfers == ()
+    assert ledger.rebuild(ledger.events) == ended.state
+
+
+def test_won_pool_fees_are_not_refunded_a_second_time_at_session_end():
+    ledger = MushroomLedger(rules(settlement_policy="refund_contributions"))
+    begin(ledger, "h1", small_blind="a")
+    settle(ledger, "h1", "a")
+    assert ledger.snapshot().outstanding_contributions == ()
+    begin(ledger, "h2", small_blind="b")
+    settle(ledger, "h2", "c")
+    ended = ledger.end_session("end")
+    assert dict(ended.transfers) == {"a": 20, "b": 40, "c": 20, "d": 20}
+    assert dict(ended.state.player_net) == {"a": 60, "b": -20, "c": -20, "d": -20}
+    assert ended.state.check_conservation()

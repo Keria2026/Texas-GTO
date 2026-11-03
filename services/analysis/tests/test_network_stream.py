@@ -53,6 +53,8 @@ def authenticate(ws, status=False):
             "network_status_v1",
             "capture_events_v1",
             "capture_state_v1",
+            "capture_profiles_v1",
+            "capture_recommendations_v1",
         ],
     )
 

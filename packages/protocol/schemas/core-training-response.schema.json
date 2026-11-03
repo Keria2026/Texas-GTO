@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.1"
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "disabled",
+        "starting",
+        "waiting_for_idle",
+        "training",
+        "paused",
+        "saving",
+        "limited",
+        "error",
+        "stopped"
+      ]
+    },
+    "worker_pid": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "game": {
+      "type": "object",
+      "properties": {
+        "game_id": {
+          "type": "string",
+          "enum": [
+            "kuhn",
+            "leduc",
+            "holdem",
+            "mushroom"
+          ]
+        },
+        "num_players": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 8
+        },
+        "stack": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "stacks": {
+          "anyOf": [
+            {
+              "minItems": 2,
+              "maxItems": 8,
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "small_blind": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "big_blind": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "straddle": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "button": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "abstraction": {
+          "type": "string",
+          "enum": [
+            "none",
+            "suit_canonical",
+            "mushroom_context",
+            "mushroom_population"
+          ]
+        },
+        "session_hands": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "game_id",
+        "num_players",
+        "stack",
+        "small_blind",
+        "big_blind",
+        "button",
+        "abstraction"
+      ],
+      "additionalProperties": false
+    },
+    "algorithm": {
+      "type": "string",
+      "const": "pluribus"
+    },
+    "objective": {
+      "type": "string",
+      "const": "expected_net_points"
+    },
+    "iterations": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "information_sets": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "averaged_information_sets": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "checkpoint_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "quality": {
+      "type": "string",
+      "const": "finite_horizon_unvalidated"
+    },
+    "recommendation_ready": {
+      "type": "boolean",
+      "const": false
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "enabled",
+    "phase",
+    "worker_pid",
+    "game",
+    "algorithm",
+    "objective",
+    "iterations",
+    "information_sets",
+    "averaged_information_sets",
+    "checkpoint_bytes",
+    "quality",
+    "recommendation_ready",
+    "reason"
+  ],
+  "additionalProperties": false
+}
