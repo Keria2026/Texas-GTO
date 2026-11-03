@@ -36,136 +36,55 @@ test('production package loads its service worker, WASM and sidebar without synt
     const panel = await context.newPage(); await panel.goto(`chrome-extension://${worker.url().split('/')[2]}/sidepanel.html`);
     const status = await send(panel, { type: 'status' });
     assert.equal(status.wasm, 'ready'); assert.equal(status.tabs.length, 0);
-    assert.equal(await panel.getByRole('heading', { name: 'TGTO 采集' }).count(), 1);
-    assert.equal(await panel.locator('.version').textContent(), `${manifest.version_name ?? manifest.version} · ${manifest.version}`);
+    assert.equal(await panel.getByRole('heading', { name: 'TGTO', exact: true }).count(), 1);
+    assert.equal(await panel.getByRole('button').count(), 1);
   } finally { await context?.close(); await rm(directory, { recursive: true, force: true }); }
 });
-test('profile sidebar displays sample counts and clears stale data at sidebar widths', { timeout: 30000 }, async () => {
-  const fixture = JSON.parse(await readFile('tests/fixtures/capture-profiles.json', 'utf8'));
+test('minimal sidebar starts communication and invalidates stale recommendations', { timeout: 30000 }, async () => {
   const browser = await chromium.launch({ headless: true, executablePath: process.env.PW_CHROMIUM || undefined, args: ['--no-sandbox'] });
   try {
-    const page = await browser.newPage();
-    await page.route('http://profiles.test/**', async route => {
+    const page = await browser.newPage(); page.setDefaultTimeout(4000);
+    await page.route('http://panel.test/**', async route => {
       const name = new URL(route.request().url()).pathname.slice(1);
       if (!['sidepanel.html', 'sidepanel.js', 'sidepanel.css'].includes(name)) return route.abort();
       await route.fulfill({ body: await readFile(`dist/${name}`), contentType: name.endsWith('.html') ? 'text/html' : name.endsWith('.js') ? 'application/javascript' : 'text/css' });
     });
-    await page.addInitScript(({ profiles, manifest }) => {
-      window.profileTestStatus = { serverProfiles: profiles, sessions: [], tabs: [], transportState: 'ready', backendURL: 'ws://127.0.0.1:8765/v1/research/stream',
-        wasm: 'ready', recent: [], businessStatus: 'inactive', businessPending: '0', businessRecent: [], backendCapabilities: ['capture_profiles_v1'] };
-      window.chrome = { runtime: { getManifest: () => manifest, onMessage: { addListener() {}, removeListener() {} },
-        sendMessage: async () => ({ ok: true, value: structuredClone(window.profileTestStatus) }) } };
-    }, { profiles: fixture, manifest });
-    await page.goto('http://profiles.test/sidepanel.html');
-    const section = page.locator('section[aria-labelledby="profiles-title"]');
-    await section.getByText('本人', { exact: true }).waitFor();
-    assert.match(await section.innerText(), /已观察 3 次行动/);
-    assert.match(await section.innerText(), /尚无有效行动样本/);
-    await section.locator('summary').click();
-    assert.match(await section.innerText(), /2 次 · 66.7%/);
-    assert.match(await section.innerText(), /不是行动建议或胜率/);
-    for (const width of [320, 390, 600]) {
-      await page.setViewportSize({ width, height: 900 });
-      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-      if (process.env.TGTO_PROFILE_SCREENSHOTS) {
-        await mkdir(process.env.TGTO_PROFILE_SCREENSHOTS, { recursive: true });
-        await section.screenshot({ path: join(process.env.TGTO_PROFILE_SCREENSHOTS, `profiles-${width}.png`) });
-      }
-    }
-    await page.evaluate(() => { delete window.profileTestStatus.serverProfiles; window.profileTestStatus.transportState = 'retrying'; });
-    await section.getByText('服务未连接，已清除旧画像。').waitFor();
-    assert.equal(await section.getByText('本人', { exact: true }).count(), 0);
-    await page.evaluate(() => { window.profileTestStatus.transportState = 'ready'; });
-    await section.getByText('等待服务器确认本次采集的画像。').waitFor();
-  } finally { await browser.close(); }
-});
-test('recommendation sidebar shows raise total and payment, then clears on invalidation and expiry', { timeout: 30000 }, async () => {
-  const browser = await chromium.launch({ headless: true, executablePath: process.env.PW_CHROMIUM || undefined, args: ['--no-sandbox'] });
-  try {
-    const page = await browser.newPage();
-    await page.route('http://recommendation.test/**', async route => {
-      const name = new URL(route.request().url()).pathname.slice(1);
-      if (!['sidepanel.html', 'sidepanel.js', 'sidepanel.css'].includes(name)) return route.abort();
-      await route.fulfill({ body: await readFile(`dist/${name}`), contentType: name.endsWith('.html') ? 'text/html' : name.endsWith('.js') ? 'application/javascript' : 'text/css' });
-    });
-    await page.addInitScript(manifest => {
-      window.recommendationTestStatus = { sessions: [], tabs: [], transportState: 'ready', backendURL: 'ws://127.0.0.1:8765/v1/research/stream',
-        wasm: 'ready', recent: [], businessStatus: 'ready', businessPending: '0', businessRecent: [], backendCapabilities: ['capture_recommendations_v1'],
-        recommendation: { status: 'ready', hand_id: 'table-1:2', selected_action: 0, expires_at_ms: Date.now() + 10000, warnings: [],
-          actions: [{ action: 'RAISE', label: 'raise_min', amount_delta: 22, raise_to: 24, probability: 1 }],
-          model: { iterations: 5, version: 'synthetic-ui-only' } } };
-      window.chrome = { runtime: { id: 'synthetic-ui', getManifest: () => manifest, onMessage: {
-        addListener(fn) { window.recommendationChanged = fn; }, removeListener() {},
-      }, sendMessage: async message => {
-        const value = structuredClone(window.recommendationTestStatus);
-        if (message.type === 'status' && window.holdNextStatus) {
-          window.holdNextStatus = false; window.heldStatus = value;
-          return new Promise(resolve => { window.releaseStaleStatus = () => resolve({ ok: true, value }); });
-        }
-        return { ok: true, value };
+    await page.addInitScript(() => {
+      window.uiState = { sessions: [], transportState: 'ready', businessStatus: 'ready',
+        business: { checkpoint: { hand_number: 7, street: 'flop', hero_cards: ['Ah', 'Ks'], board: ['Ad', '7c', '2h'],
+          players: [{ player_id: 'hero', seat: 1, stack: 760 }, { player_id: 'player-2', seat: 2, stack: 800 }], turn: { player_id: 'hero' } } },
+        recommendation: { status: 'ready', selected_action: 0, expires_at_ms: Date.now() + 60000,
+          actions: [{ action: 'RAISE', amount_delta: 22, raise_to: 24 }] } };
+      window.chrome = { runtime: { id: 'synthetic-ui', onMessage: { addListener(fn) { window.changed = fn; }, removeListener() {} }, sendMessage: async message => {
+        if (message.type === 'start_game') { window.started = true; window.uiState.sessions = [{ state: 'active' }]; }
+        if (window.hold && message.type === 'status') { window.hold = false; const value = structuredClone(window.uiState); return new Promise(resolve => { window.release = () => resolve({ ok: true, value }); }); }
+        return { ok: true, value: structuredClone(window.uiState) };
       } } };
-    }, manifest);
-    await page.goto('http://recommendation.test/sidepanel.html');
-    const section = page.locator('section[aria-labelledby="recommendation-title"]');
-    await section.locator('strong').getByText('加注 至 24 分，本次投入 22 分', { exact: true }).waitFor();
-    assert.match(await section.innerText(), /频率不是胜率/);
+    });
+    await page.goto('http://panel.test/sidepanel.html');
+    const advice = page.locator('section[aria-labelledby="recommendation-title"]');
+    await page.getByRole('button', { name: '开始对局', exact: true }).waitFor();
+    assert.equal(await page.getByRole('button').count(), 1);
+    await page.getByRole('button', { name: '开始对局', exact: true }).click();
+    assert.equal(await page.evaluate(() => window.started), true);
+    await advice.getByText('本次投入 22 分', { exact: true }).waitFor();
     for (const width of [320, 390, 600]) {
-      await page.setViewportSize({ width, height: 900 });
+      await page.setViewportSize({ width, height: 920 });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     }
-    const screenshot = resolve(process.env.TGTO_RECOMMENDATION_SCREENSHOT ?? '.impeccable/review/recommendation-synthetic.png');
-    await mkdir(dirname(screenshot), { recursive: true });
-    await section.screenshot({ path: screenshot });
-    await section.getByText('模型来源', { exact: true }).click();
-    await page.evaluate(() => {
-      Object.assign(window.recommendationTestStatus.recommendation.model, {
-        source: 'pluribus_search', search: { status: 'complete', iterations: 12, elapsed_ms: 900 },
-      });
-      window.recommendationTestStatus.recommendation.warnings.push('latest_completed_search_policy');
-      window.recommendationChanged({ type: 'state_changed' }, { id: 'synthetic-ui' });
-    });
-    await section.getByText(/Pluribus 限时搜索/).waitFor();
-    await section.getByText(/本次搜索完成 12 轮/).waitFor();
-    await section.getByText('行动策略：最新完整迭代，尚未验证收敛。', { exact: true }).waitFor();
-    await page.evaluate(() => {
-      Object.assign(window.recommendationTestStatus.recommendation.model, {
-        source: 'pluribus_blueprint', search: { status: 'coverage_missing', elapsed_ms: 70 },
-      });
-      window.recommendationChanged({ type: 'state_changed' }, { id: 'synthetic-ui' });
-    });
-    await section.getByText('后续策略覆盖不足，本次使用已训练的当前节点策略。', { exact: true }).waitFor();
-    assert.equal(await section.getByText('行动策略：最新完整迭代，尚未验证收敛。', { exact: true }).count(), 0);
-    await page.evaluate(() => { window.holdNextStatus = true; });
-    await page.getByRole('button', { name: '重新连接', exact: true }).click();
-    await page.waitForFunction(() => typeof window.releaseStaleStatus === 'function');
-    await page.evaluate(() => {
-      window.recommendationTestStatus.recommendation = undefined;
-      window.recommendationChanged({ type: 'state_changed' }, { id: 'synthetic-ui' });
-    });
-    await section.getByText('等待当前牌局的有效建议。', { exact: true }).waitFor();
-    await page.evaluate(() => window.releaseStaleStatus());
-    await page.waitForFunction(() => [...document.querySelectorAll('button')]
-      .some(button => button.textContent === '重新连接' && !button.disabled));
-    assert.equal(await section.locator('strong').count(), 0, 'a delayed manual refresh must not revive stale advice');
-    await page.evaluate(() => {
-      window.recommendationTestStatus.recommendation = window.heldStatus.recommendation;
-      window.recommendationTestStatus.recommendation.expires_at_ms = Date.now() - 1;
-      window.recommendationChanged({ type: 'state_changed' }, { id: 'synthetic-ui' });
-    });
-    await section.getByText('建议已过期，等待新的牌桌状态。', { exact: true }).waitFor();
-    assert.equal(await section.locator('strong').count(), 0);
-    await page.evaluate(() => {
-      window.recommendationTestStatus.recommendation = { status: 'unavailable',
-        reason: 'strategy_feedback_unavailable', actions: [], selected_action: null, model: null };
-      window.recommendationChanged({ type: 'state_changed' }, { id: 'synthetic-ui' });
-    });
-    await section.getByText('当前局面的训练反馈不足，暂不推荐行动。', { exact: true }).waitFor();
-    assert.equal(await section.locator('strong').count(), 0);
-    await page.evaluate(() => {
-      window.recommendationTestStatus.transportState = 'retrying';
-      window.recommendationChanged({ type: 'state_changed' }, { id: 'synthetic-ui' });
-    });
-    await section.getByText('本地服务未连接，建议已清除。', { exact: true }).waitFor();
+    await page.setViewportSize({ width: 390, height: 1000 });
+    const shot = resolve('.impeccable/review/sidebar-current.png'); await mkdir(dirname(shot), { recursive: true }); await page.screenshot({ path: shot, fullPage: true });
+    await page.evaluate(() => { window.hold = true; window.changed({ type: 'state_changed' }, { id: 'synthetic-ui' }); });
+    await page.waitForFunction(() => window.release);
+    await page.evaluate(() => { window.uiState.recommendation = undefined; window.changed({ type: 'state_changed' }, { id: 'synthetic-ui' }); });
+    await advice.getByText('等待当前牌局的有效建议。').waitFor();
+    await page.evaluate(() => window.release());
+    await page.waitForTimeout(100);
+    assert.equal(await advice.locator('strong').count(), 0);
+    await page.evaluate(() => { window.uiState.recommendation = { status: 'ready', expires_at_ms: Date.now() - 1, selected_action: 0, actions: [{ action: 'RAISE', amount_delta: 22, raise_to: 24 }] }; window.changed({ type: 'state_changed' }, { id: 'synthetic-ui' }); });
+    await advice.getByText('建议已过期，等待新的牌桌状态。').waitFor();
+    await page.evaluate(() => { window.uiState.transportState = 'retrying'; window.changed({ type: 'state_changed' }, { id: 'synthetic-ui' }); });
+    await advice.getByText('等待连接本地服务。开始后会自动重连。').waitFor();
   } finally { await browser.close(); }
 });
 test('service worker restart resumes the authorized tab with a gap; explicit stop prevents recovery', { timeout: 45000 }, async () => {
@@ -253,13 +172,11 @@ test('loadable MV3: real CDP frames, worker, iframe, closed sidebar, offline que
     const page = await context.newPage(); await page.goto('http://127.0.0.1:8767/');
     const tabs = await panel.evaluate(() => chrome.tabs.query({}));
     const tabId = tabs.find(t => t.url === 'http://127.0.0.1:8767/').id;
-    await until(async () => await panel.getByRole('option', { name: `WPK · tab ${tabId}` }).count() > 0);
-    await panel.getByLabel('目标标签页').selectOption(String(tabId));
-    await panel.getByLabel('额外保存原始载荷，仅限本地诊断').check();
+
     // The reference receiver remains an explicit authenticated test transport.
     await send(panel, { type: 'connect', url: 'ws://127.0.0.1:8766/v1/research/stream', token: options.token });
-    await panel.getByRole('button', { name: '开始采集', exact: true }).click();
-    await until(() => panel.getByRole('button', { name: '停止采集', exact: true }).isEnabled());
+    await send(panel, { type: 'start', tabId, raw: true });
+    await until(async () => (await send(panel, { type: 'status' })).sessions.some(s => s.state === 'active'));
     await page.evaluate(() => window.startStreams());
     await until(async () => (await send(panel, { type: 'status' })).business?.checkpoint?.hand_number === 1);
     await page.evaluate(() => window.__wpkFixture.play());
@@ -317,10 +234,10 @@ test('loadable MV3: real CDP frames, worker, iframe, closed sidebar, offline que
     assert.ok(!JSON.stringify(backend.db.prepare('SELECT body FROM events').all()).includes('synthetic-main'));
     const shotDir = resolve('.impeccable/review'); await mkdir(shotDir, { recursive: true });
     await until(async () => await panel.getByText('已连接', { exact: true }).count() > 0);
-    await until(async () => await panel.getByText('业务采集已中断', { exact: true }).count() > 0);
+    await until(async () => await panel.getByText('采集已中断，请重新开始', { exact: true }).count() > 0);
     for (const width of [320, 480]) {
       await panel.setViewportSize({ width, height: 1000 });
-      await until(async () => await panel.getByText('累计写入', { exact: true }).count() > 0);
+
       assert.ok(await panel.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       await panel.screenshot({ path: `${shotDir}/sidepanel-${width}.png`, fullPage: true });
     }

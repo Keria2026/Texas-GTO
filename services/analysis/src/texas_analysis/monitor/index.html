@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TGTO · 训练与策略测试</title><link rel="stylesheet" href="/training/monitor.css"><script type="module" src="/training/monitor.js"></script></head>
+<body><main>
+<header><div><h1>训练与策略测试</h1><p>查看当前规则的学习积累，检查模型能否回答具体牌局。</p></div><span id="connection" role="status">正在连接</span></header>
+<p id="error" class="notice" role="alert" hidden></p>
+<div class="layout"><section aria-labelledby="progress-title"><div class="section-title"><h2 id="progress-title">自博弈训练</h2><span id="phase">—</span></div>
+<p id="freshness" class="muted">正在读取已保存模型…</p>
+<dl class="stats"><div><dt>当前规则训练</dt><dd id="rounds">—</dd></div><div><dt>当前规则信息集</dt><dd id="sets">—</dd></div><div><dt>有平均策略记录</dt><dd id="averaged">—</dd></div><div><dt>平均策略记录占比</dt><dd id="ratio">—</dd></div></dl>
+<p class="muted">占比表示已记录平均策略的节点比例，不是训练完成度或实局可用率。</p>
+<h3>按决策阶段查看</h3><table><thead><tr><th>视野 / 阶段</th><th>信息集</th><th>有平均策略</th></tr></thead><tbody id="stages"></tbody></table>
+<p id="feedback" class="muted"></p><p id="schedule" class="muted"></p><dl class="details"><dt>训练开局 / 实采开局</dt><dd id="roots">—</dd><dt>训练库大小</dt><dd id="size">—</dd><dt>累计历史轮数</dt><dd id="iterations">—</dd></dl>
+</section>
+<section aria-labelledby="simulation-title"><div class="section-title"><h2 id="simulation-title">随机牌局测试</h2><span class="tag">模拟数据</span></div>
+<p>从模型的八人开局生成随机手牌与合法行动，查询当前信息集，并可执行限时搜索。</p>
+<form id="simulate"><div class="fields"><label>目标阶段<select id="street"><option value="0">翻前</option><option value="1">翻牌</option><option value="2">转牌</option><option value="3">河牌</option></select></label><label>随机种子 <span class="muted">可留空</span><input id="seed" type="number" min="0" max="4294967295" step="1" placeholder="每次随机"></label></div>
+<label class="check"><input id="search" type="checkbox" checked>使用与实局相同的限时搜索</label><button id="run" type="submit">生成牌局并测试</button></form>
+<p id="test-status" role="status" class="muted">测试不会写入训练库，也不会操作真实牌桌。</p>
+<div id="result" hidden><div class="result-heading"><h3 id="verdict"></h3><span id="timing"></span></div><p id="case"></p><div id="cards"></div><p id="finances"></p><p id="selection"></p><table><thead><tr><th>行动</th><th>本次投入</th><th>策略频率</th></tr></thead><tbody id="actions"></tbody></table><p id="search-result" class="muted"></p><details><summary>生成的筹码与行动历史</summary><p id="stacks"></p><ol id="history"></ol></details></div>
+<h3>本页测试记录</h3><p id="test-summary" class="muted">尚未测试。每次结果都会保留模型轮数，便于比较。</p><ol id="runs" class="runs"></ol>
+<p class="muted">这里测试策略查询与搜索；不代替 WPK 采集验收、对手强度评测或实局收益验证。</p>
+</section></div></main></body></html>

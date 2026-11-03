@@ -86,6 +86,17 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
         businessRecent: business ? await app.db.recent(business.id) : [],
         recent: current ? await app.db.recent(current.id) : [] };
     }
+    if (msg.type === 'start_game') {
+      const candidates = (await chrome.tabs.query({})).filter(t => t.id !== undefined && t.url && allowedPage(t.url));
+      candidates.sort((a, b) => Number(b.active) - Number(a.active) || (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0));
+      const target = candidates[0];
+      if (!target?.id) throw Error('请先打开 WPK 牌桌，再点击开始对局。');
+      const local = BACKENDS.find(url => url.startsWith('ws://127.0.0.1:'));
+      if (!local) throw Error('此安装包未配置本地算法服务。');
+      if (!app.socket.enabled || app.socket.url !== local) app.socket.connect(local);
+      await chrome.storage.session.set({ backendEnabled: true, localAutoConnect: true, backendURL: local });
+      msg.type = 'start'; msg.tabId = target.id; msg.raw = false;
+    }
     if (msg.type === 'start') {
       if (typeof msg.tabId !== 'number' || typeof msg.raw !== 'boolean') throw Error('Invalid capture settings');
       const tab = await chrome.tabs.get(msg.tabId);
@@ -147,9 +158,9 @@ const initialized = (async () => {
   }
   fault ??= (await chrome.storage.local.get('captureFault')).captureFault as string | undefined;
   await chrome.alarms.create('tgto-retry', { periodInMinutes: 0.5 });
-  const saved = await chrome.storage.session.get(['backendEnabled', 'backendURL', 'researchToken', 'localAutoConnect']);
+  const saved = await chrome.storage.session.get(['backendEnabled', 'backendURL', 'researchToken', 'localAutoConnect', 'captureIntent']);
   const local = BACKENDS.find(url => url.startsWith('ws://127.0.0.1:'));
-  if (local && saved.localAutoConnect !== false) {
+  if (local && saved.captureIntent && saved.localAutoConnect !== false) {
     await chrome.storage.session.remove('researchToken');
     socket.connect(local);
   } else if (!local && saved.backendEnabled && typeof saved.backendURL === 'string' && typeof saved.researchToken === 'string') {

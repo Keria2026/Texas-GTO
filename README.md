@@ -9,4 +9,6 @@
 - [AI 技术手册：模块、数据流和算法](docs/ai/architecture.md)
 - [后续工作](ROADMAP.md)
 
+训练监控与模拟策略测试：启动服务后打开 `http://127.0.0.1:8765/training`。插件点击“开始对局”连接本地服务。
+
 唯一正式客户端为 Client；Serve 是后端安装包。GitHub Actions 每次推送及 PR 检查并构建两个工件。训练库与私人采集数据单独导出，不包含在程序包中。

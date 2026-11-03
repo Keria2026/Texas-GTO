@@ -15,9 +15,9 @@ sudo loginctl enable-linger "$USER"
 systemctl --user status texas-gto-local.service
 ```
 
-服务在 `127.0.0.1:8765` 运行，API 与训练子进程合计限制为 1 GiB，空闲时自动训练。首次大库启动需要完整校验；接口恢复和训练恢复不是同一时刻。
+服务在 `127.0.0.1:8765` 运行，API 与训练子进程合计限制为 1 GiB，空闲时自动训练。首次大库启动需要完整校验；接口恢复和训练恢复不是同一时刻。训练进度与随机策略测试页面位于 `http://127.0.0.1:8765/training`，随服务启动，无需 Node 或额外端口。
 
-解压 Client.zip，在 Chrome 扩展管理页开启开发者模式，加载其中的 Client 目录。插件自动连接同一台机器的本地服务。升级时覆盖原目录并重新加载，保留扩展 ID。进入牌桌后明确开始采集；缺历史、规则不支持或缺策略时不会显示建议。
+解压 Client.zip，在 Chrome 扩展管理页开启开发者模式，加载其中的 Client 目录。点击“开始对局”后，插件自动选择当前 WPK 页面并连接本机服务，断线自动重连。升级时覆盖原目录并重新加载，保留扩展 ID。进入牌桌后开始对局；缺历史、规则不支持或缺策略时不会显示建议。
 
 WSL 需启用 systemd（`/etc/wsl.conf` 中 `[boot]` 下配置 `systemd=true`），并由 Windows 启动该发行版。仓库 `deploy/register-wsl-startup.ps1` 是 Windows 启动入口，源码开发仍全部在 WSL 内。
 
@@ -50,3 +50,17 @@ systemctl --user start texas-gto-local.service
 ```
 
 规则或开局分布升级会保存 before-* 备份。旧程序不一定支持新模型格式；回退需配套旧程序与对应备份，并先保留当前数据。不要仅切换 current 就假定模型已回退。
+
+## 清理旧规则训练数据
+
+停止服务后执行以下命令，仅保留当前 `ante4:` 信息集。保留尚无平均策略的当前节点，它们仍含可续训的遗憾反馈。此操作不重置轮数、随机状态或当前策略值。
+
+```bash
+systemctl --user stop texas-gto-local.service
+"$HOME/.local/share/texas-gto/current/bin/texas-state" compact \
+  --data-dir "$HOME/.local/share/texas-gto/data" \
+  --backup "$HOME/training-before-compact.sqlite3"
+systemctl --user start texas-gto-local.service
+```
+
+备份路径必须未存在，且与数据位于同一文件系统；工具使用硬链接保留独立回滚文件。旧库验证、当前记录复制和校验成功后才替换运行库。该备份不参与推荐，也不进入数据导出。后续规则变更须先明确兼容边界，不能承诺当前数据永远适用于未来规则。
