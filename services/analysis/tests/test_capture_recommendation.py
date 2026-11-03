@@ -137,7 +137,7 @@ def batch(events):
     )
 
 
-def fixture_model(path, events, *, average=True, ledger_resolver=None):
+def fixture_model(path, events, *, average=True, feedback=True, ledger_resolver=None):
     """Insert an explicitly synthetic weighted policy to test transport, not strength."""
     state = observation(events)
     game, replay, query = prepare_query(state, events, ledger_resolver=ledger_resolver)
@@ -148,8 +148,10 @@ def fixture_model(path, events, *, average=True, ledger_resolver=None):
             (query.player, query.information_key),
             _TableEntry(
                 query.actions,
-                [99.0] * len(query.actions),
-                list(range(1, len(query.actions) + 1)) if average else [0.0] * len(query.actions),
+                [99.0 if feedback else 0.0] * len(query.actions),
+                (list(range(1, len(query.actions) + 1)) if feedback else [1.0] * len(query.actions))
+                if average
+                else [0.0] * len(query.actions),
             ),
             replay.state.street,
         )
@@ -168,6 +170,17 @@ def call(events, path, **kwargs):
         policy_path=path,
         **kwargs,
     )
+
+
+@pytest.mark.parametrize("search", [False, True])
+def test_average_only_initialization_is_not_recommended(tmp_path, search):
+    events = eight_player_events()
+    path = tmp_path / "training.sqlite3"
+    fixture_model(path, events, feedback=False)
+    result = call(events, path, search=search)
+    assert result["status"] == "unavailable"
+    assert result["reason"] == "strategy_feedback_unavailable"
+    assert result["actions"] == [] and result["selected_action"] is None
 
 
 def test_eight_seat_rotation_keeps_query_and_actual_amounts(tmp_path):

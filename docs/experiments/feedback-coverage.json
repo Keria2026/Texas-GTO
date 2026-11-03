@@ -1,0 +1,48 @@
+{
+  "real_capture": false,
+  "scope": "synthetic fixed-800 all-call prefixes queried against the production read-only snapshot",
+  "iterations": 6129,
+  "model_digest": "991dcd4d3e7b9b056d80cc2836b32d63e671d7b3e1527dc3205d0b058d0afd16",
+  "positions": [
+    {
+      "average_available": 169,
+      "passes_minimum_feedback_check": 169,
+      "classes": 169
+    },
+    {
+      "average_available": 169,
+      "passes_minimum_feedback_check": 161,
+      "classes": 169
+    },
+    {
+      "average_available": 169,
+      "passes_minimum_feedback_check": 88,
+      "classes": 169
+    },
+    {
+      "average_available": 149,
+      "passes_minimum_feedback_check": 21,
+      "classes": 169
+    },
+    {
+      "average_available": 90,
+      "passes_minimum_feedback_check": 3,
+      "classes": 169
+    },
+    {
+      "average_available": 64,
+      "passes_minimum_feedback_check": 0,
+      "classes": 169
+    },
+    {
+      "average_available": 57,
+      "passes_minimum_feedback_check": 0,
+      "classes": 169
+    },
+    {
+      "average_available": 63,
+      "passes_minimum_feedback_check": 0,
+      "classes": 169
+    }
+  ]
+}

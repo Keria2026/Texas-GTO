@@ -40,6 +40,8 @@ test('recommendation rejects malformed amounts, frequencies, provenance and unav
   const empty = ready(); Object.assign(empty, { status: 'unavailable', reason: 'strategy_not_trained',
     actions: [], selected_action: null, model: null, expires_at_ms: empty.issued_at_ms });
   assert.equal(parseRecommendation(empty).actions.length, 0);
+  empty.reason = 'strategy_feedback_unavailable';
+  assert.equal(parseRecommendation(empty).actions.length, 0);
 });
 
 test('new local action, expiry, stop, lost history or changed turn immediately hides advice', async () => {

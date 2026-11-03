@@ -99,6 +99,32 @@ class PersistentPolicy:
         total = fsum(scaled)
         return PolicyEntry(actions, tuple(value / total for value in scaled))
 
+    def is_uniform_without_regrets(self, player: int, information_key: str) -> bool:
+        """Check current values, not visit counts or convergence.
+
+        Equal values can also result from legitimate training; without visit
+        provenance this conservative check cannot distinguish them from initialization.
+        """
+        entry = self.lookup(player, information_key)
+        if entry is None:
+            return True
+        row = self._db.execute(
+            "SELECT regrets FROM training_entries WHERE player=? AND information_key=?",
+            (player, information_key),
+        ).fetchone()
+        regrets = _json(row[0])
+        try:
+            valid = (
+                isinstance(regrets, list)
+                and len(regrets) == len(entry.actions)
+                and all(type(v) in (int, float) and isfinite(v) for v in regrets)
+            )
+        except OverflowError:
+            valid = False
+        if not valid:
+            raise ValueError("Invalid policy regret evidence")
+        return not any(regrets) and len(set(entry.probabilities)) == 1
+
     def _query(self, game: Any, state: Any) -> tuple:
         if _binding(game) != self._binding:
             raise ValueError("Policy query game/rules do not match this snapshot")

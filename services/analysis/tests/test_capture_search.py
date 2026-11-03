@@ -173,6 +173,22 @@ def test_search_failure_only_allows_current_covered_baseline(tmp_path, monkeypat
         assert result["status"] == "unavailable" and result["actions"] == []
 
 
+@pytest.mark.parametrize("failure", [None, SearchCoverageError, EvaluationLimitError])
+def test_search_may_supply_feedback_but_cannot_fall_back_to_initialization(
+    tmp_path, monkeypatch, failure
+):
+    events = eight_player_flop_events()
+    path = tmp_path / "training.sqlite3"
+    fixture_model(path, events, feedback=False)
+    install_search(monkeypatch, failure=failure)
+    result = call(events, path, search=True)
+    if failure is None:
+        assert result["status"] == "ready" and result["model"]["source"] == "pluribus_search"
+    else:
+        assert result["reason"] == "strategy_feedback_unavailable"
+        assert result["status"] == "unavailable" and result["actions"] == []
+
+
 def test_search_cannot_return_different_actions_or_hide_total_expiry(tmp_path, monkeypatch):
     events = eight_player_flop_events()
     path = tmp_path / "training.sqlite3"

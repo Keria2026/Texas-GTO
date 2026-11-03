@@ -154,6 +154,7 @@ const unavailableReasons: Record<string, string> = {
   unmapped_mushroom_owner: '蘑菇池存在尚未对应到座位的缴费权益。',
   observation_expired: '牌局信息已过期，等待新的牌桌状态。', public_state_incomplete: '等待完整的行动、筹码和牌桌快照。',
   strategy_not_trained: '当前节点尚无已训练策略，暂不推荐行动。', model_unavailable: '训练模型尚未就绪。',
+  strategy_feedback_unavailable: '当前局面的训练反馈不足，暂不推荐行动。',
   client_legal_actions_conflict: '牌桌可选行动与规则校验不一致，建议已停止。',
   query_timeout: '本次查询超时，建议已清除。', model_or_state_invalid: '模型或牌局校验失败，暂不推荐行动。',
 };

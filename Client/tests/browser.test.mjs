@@ -150,6 +150,13 @@ test('recommendation sidebar shows raise total and payment, then clears on inval
     await section.getByText('建议已过期，等待新的牌桌状态。', { exact: true }).waitFor();
     assert.equal(await section.locator('strong').count(), 0);
     await page.evaluate(() => {
+      window.recommendationTestStatus.recommendation = { status: 'unavailable',
+        reason: 'strategy_feedback_unavailable', actions: [], selected_action: null, model: null };
+      window.recommendationChanged({ type: 'state_changed' }, { id: 'synthetic-ui' });
+    });
+    await section.getByText('当前局面的训练反馈不足，暂不推荐行动。', { exact: true }).waitFor();
+    assert.equal(await section.locator('strong').count(), 0);
+    await page.evaluate(() => {
       window.recommendationTestStatus.transportState = 'retrying';
       window.recommendationChanged({ type: 'state_changed' }, { id: 'synthetic-ui' });
     });

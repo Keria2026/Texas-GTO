@@ -115,6 +115,52 @@ def test_zero_average_is_missing_and_uniform_is_explicit_counted_fallback(tmp_pa
         assert policy.fallback_count == 1 and policy.covered_queries == 0
 
 
+@pytest.mark.parametrize(
+    "regrets,sums,expected",
+    [
+        ([0, 0], [1, 1], True),
+        ([-1, 0], [1, 1], False),
+        ([0, 0], [2, 1], False),
+        ([1, -1], [0, 0], True),
+    ],
+)
+def test_uniform_without_regrets_check_is_conservative_not_a_quality_assessment(
+    tmp_path, regrets, sums, expected
+):
+    game, _state, key, entry, path, trainer = sample(tmp_path)
+    save_entries(trainer, {key: _TableEntry(entry.actions, regrets, sums)})
+    trainer._store.close()
+    with persistent_policy.policy_snapshot(game, path) as policy:
+        assert policy.is_uniform_without_regrets(*key) is expected
+        assert policy.is_uniform_without_regrets(0, "not-trained") is True
+
+
+def test_payoff_evidence_uses_the_same_snapshot_and_releases_it(tmp_path):
+    game, _state, key, entry, path, trainer = sample(tmp_path)
+    try:
+        with persistent_policy.policy_snapshot(game, path) as policy:
+            assert not policy.is_uniform_without_regrets(*key)
+            save_entries(trainer, {key: _TableEntry(entry.actions, [0, 0], [1, 1])})
+            assert not policy.is_uniform_without_regrets(*key)
+            with persistent_policy.policy_snapshot(game, path) as current:
+                assert current.is_uniform_without_regrets(*key)
+        with pytest.raises(ValueError, match="closed"):
+            policy.is_uniform_without_regrets(*key)
+    finally:
+        trainer._store.close()
+
+
+@pytest.mark.parametrize("value", ["[NaN,2]", "[1e999,2]", "[true,2]", "[1]", "{}"])
+def test_invalid_payoff_evidence_cannot_be_accepted_due_to_nonuniform_averages(tmp_path, value):
+    game, _state, key, _entry, path, trainer = sample(tmp_path)
+    trainer._store.close()
+    with sqlite3.connect(path) as db:
+        db.execute("UPDATE training_entries SET regrets=?", (value,))
+    with persistent_policy.policy_snapshot(game, path) as policy:
+        with pytest.raises(ValueError):
+            policy.is_uniform_without_regrets(*key)
+
+
 def test_rules_action_order_and_game_binding_are_checked(tmp_path):
     game, state, key, _entry, path, trainer = sample(tmp_path)
     trainer._store.close()

@@ -244,6 +244,10 @@ def recommend(
                     entry, strategy_source = solved, "pluribus_search"
             if entry is None:
                 raise RecommendationUnavailable("strategy_not_trained")
+            if strategy_source == "pluribus_blueprint" and policy.is_uniform_without_regrets(
+                query.player, query.information_key
+            ):
+                raise RecommendationUnavailable("strategy_feedback_unavailable")
             actions = _actions(replay, query, entry.probabilities, state["turn"])
             model_info = {
                 "source": strategy_source,
