@@ -625,9 +625,9 @@ class TrainingStore(Mapping[InformationSet, _TableEntry]):
         self._metadata = document["metadata"]
 
     def enable_population_training(self, trainer: Trainer, population_game: Any) -> None:
-        """Explicitly retain a fixed-root model as a population warm start.
+        """Retain cumulative values while explicitly changing the public root distribution.
 
-        Stop the worker and back up its committed database before calling. The
+        Call between committed iterations; back up before the first migration. The
         target manifest freezes the source iteration and keeps the total-iteration
         schedule. Retained sums are initialization, not samples from the new root
         distribution; no accumulated value or RNG state is reweighted or reset.
@@ -639,7 +639,10 @@ class TrainingStore(Mapping[InformationSet, _TableEntry]):
         if not isinstance(population_game, MushroomPopulationGame):
             raise ValueError("Expected a validated mushroom population game")
         previous = trainer.game
-        population_game.validate_warm_start(previous, source_iterations=trainer.iterations)
+        if isinstance(previous, MushroomPopulationGame):
+            population_game.validate_opening_update(previous, source_iterations=trainer.iterations)
+        else:
+            population_game.validate_warm_start(previous, source_iterations=trainer.iterations)
         if population_game.final_betting_round != previous.final_betting_round:
             raise ValueError("Population training cannot change betting-round semantics")
         if _document(trainer, trainer.iterations) != self._document:

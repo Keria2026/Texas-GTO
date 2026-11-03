@@ -4,7 +4,7 @@
 
 ## Pr1.0
 
-当前扩展数字版本为 0.8.2，配套同仓库 Serve。支持当前下注轮起点搜索、画像来源与独立比较展示；算法和真实样本训练发布见 [Pr1.0](../docs/pr1.0.md)。原有采集功能如下。
+当前扩展数字版本为 0.8.3，配套同仓库 Serve。支持当前下注轮起点搜索、画像来源与独立比较展示；算法和真实样本训练发布见 [Pr1.0](../docs/pr1.0.md)。原有采集功能如下。
 
 - 双向逐条 WebSocket 消息采集，覆盖已识别的允许端点；关联 Worker / iframe 目标递归附着与恢复执行。
 - Rust/WASM 执行消息边界、连续序号、ACK 范围和存储预算检查；失败时停止并显示覆盖缺口。
@@ -15,7 +15,7 @@
 - 原始原型、来源哈希、字段形状依据现已纳入 [evidence/wpk](evidence/wpk/README.md)。
 - 已对接 Texas-GTO Python 后端：双流持久确认、服务器观察状态回传与侧栏覆盖提示；保留 SQLite Node 参考接收器。
 
-**业务适配复用网站已解码的可见状态，不导出密钥。最新 WPK 尚未现场复测；策略和训练仍由原研究后端负责，本仓库不实现目标规则的策略覆盖。**
+**业务适配复用网站已解码的可见状态，不导出密钥。更新后的插件仍待现场复测；策略和训练由同仓库算法服务负责，扩展显示经后端校验的建议或缺口。**
 
 ## 构建与加载
 
@@ -30,7 +30,7 @@ npm ci
 npm run build
 ```
 
-在 Edge `edge://extensions` 或 Chrome `chrome://extensions` 开启开发者模式，加载已解压扩展目录 `dist/`。Windows 可选择对应 WSL 路径，例如 `\\wsl.localhost\Ubuntu-24.04\home\ubuntu\Project\TGTO-FronEnd\dist`。无需远程调试启动参数，无需常开 DevTools。
+在 Edge `edge://extensions` 或 Chrome `chrome://extensions` 开启开发者模式，加载已解压扩展目录 `dist/`。Windows 可选择对应 WSL 路径，例如 `\\wsl.localhost\Ubuntu-24.04\home\ubuntu\Project\Texas-GTO\Client\dist`。无需远程调试启动参数，无需常开 DevTools。
 
 从 0.2 升级时保留同一扩展目录和扩展 ID，覆盖构建文件后点击“重新加载”，先不要移除扩展。更换目录可能改变扩展 ID、数据库来源及后端 Origin；请先导出旧记录。原 IDB v1 自动迁移至 v2 并保留档案，新增服务器绑定设置；业务流使用新的独立源。
 

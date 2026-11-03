@@ -239,11 +239,13 @@ export function App() {
             <dl className="experiment-metrics">
               <div><dt>已保存迭代</dt><dd>{core.iterations.toLocaleString("zh-CN")}</dd></div>
               {core.rule_iterations != null && <div><dt>当前规则迭代（前注 {core.game.ante ?? 0} 分）</dt><dd>{core.rule_iterations.toLocaleString("zh-CN")}</dd></div>}
+              {core.training_roots != null && <div><dt>训练开局／其中来自实采</dt><dd>{core.training_roots.toLocaleString("zh-CN")} / {(core.observed_openings ?? 0).toLocaleString("zh-CN")}</dd></div>}
               <div><dt>累计训练信息集</dt><dd>{core.information_sets.toLocaleString("zh-CN")}</dd></div>
               <div><dt>已积累平均策略的信息集</dt><dd>{core.averaged_information_sets.toLocaleString("zh-CN")}</dd></div>
               <div><dt>保存的训练进度</dt><dd>{core.checkpoint_bytes ? `${(core.checkpoint_bytes / 1048576).toFixed(1)} MiB` : "等待首次保存"}</dd></div>
             </dl>
-            <p className="note">当前采用 {core.game.session_hands} 手训练视野，仍是研究近似。训练结果尚未通过实局验证，暂不用于行动推荐。</p>
+            <p className="note">当前采用 {core.game.session_hands} 手训练视野，仍是研究近似。新增实采开局不等于策略已覆盖；行动推荐仍须通过当前节点的输入、策略与反馈检查。</p>
+            {core.opening_capacity_reached && <p className="error" role="status">实采开局已达到容量上限，新增组合暂未纳入训练，已有累计保持保留。</p>}
             {core.iterations > 0 && core.averaged_information_sets === 0 && <p className="small">尚未到平均策略积累周期；已训练的信息集数量不代表实局策略覆盖。</p>}
             {core.reason && <details><summary>查看训练诊断</summary><p>{core.phase === "limited" ? "已达到资源上限，最近保存的进度仍然保留。" : "训练已停止，不会自动重置已保存的进度。"}</p><pre>{core.reason}</pre></details>}
           </>}

@@ -20,7 +20,7 @@ from starlette.concurrency import run_in_threadpool
 from texas_strategy.evaluation import CancellationError
 from texas_strategy.policy import TabularPolicy
 
-from . import capture_learning, capture_strategy
+from . import capture_learning, capture_openings, capture_strategy
 from .capture_contract import (
     CAPABILITY as BUSINESS_CAPABILITY,
 )
@@ -210,6 +210,21 @@ class NetworkStore:
                     capture_learning.initialize(db)
                     self._restore_learning(db)
                     capture_strategy.initialize(db)
+                    capture_openings.initialize(db)
+
+    def collect_training_openings(self, should_cancel=lambda: False):
+        def check():
+            if should_cancel():
+                raise CancellationError("Opening collection cancelled")
+
+        with self.learning_lock:
+            with closing(self.connect()) as db, db:
+                db.execute("BEGIN")
+                batch = capture_openings.collect(db, check)
+            check()
+            with closing(self.connect()) as db, db:
+                db.execute("BEGIN IMMEDIATE")
+                capture_openings.publish(db, batch)
 
     def train_behavior(self, should_cancel=lambda: False):
         if not self.learning_lock.acquire(blocking=False):

@@ -189,6 +189,9 @@ class CoreTrainingResponse(StrictModel):
     algorithm: Literal["pluribus"] = "pluribus"
     objective: Literal["expected_net_points"] = "expected_net_points"
     rule_iterations: int = Field(default=0, ge=0)
+    training_roots: int = Field(default=0, ge=0)
+    observed_openings: int = Field(default=0, ge=0)
+    opening_capacity_reached: bool = False
     iterations: int = Field(default=0, ge=0)
     information_sets: int = Field(default=0, ge=0)
     averaged_information_sets: int = Field(default=0, ge=0)

@@ -201,13 +201,16 @@ def create_app(
                     if (directory / "capture.sqlite3").is_file():
                         store = await asyncio.to_thread(get_capture_store)
                         await asyncio.to_thread(store.train_behavior, learning_stop.is_set)
+                        await asyncio.to_thread(
+                            store.collect_training_openings, learning_stop.is_set
+                        )
                     capture_resources.pop("learning_error", None)
                 except CancellationError:
                     break
                 except (OSError, ValueError, sqlite3.Error) as error:
                     capture_resources["learning_error"] = type(error).__name__
                     logging.getLogger(__name__).exception(
-                        "Behavior learner failed; active model retained"
+                        "Capture learners failed; active models retained"
                     )
                 try:
                     await asyncio.wait_for(learning_done.wait(), timeout=30)

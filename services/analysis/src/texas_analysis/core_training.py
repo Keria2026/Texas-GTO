@@ -19,10 +19,11 @@ from threading import Event, Lock
 from time import monotonic, sleep
 from uuid import uuid4
 
-from texas_strategy.blueprint import DEFAULT_MAX_BYTES, _read
-from texas_strategy.mushroom_population import MushroomPopulationGame
+from texas_strategy.blueprint import DEFAULT_MAX_BYTES, _canonical, _read
+from texas_strategy.mushroom_population import MAX_ROOTS, MushroomPopulationGame, _root
 from texas_strategy.training_store import _header, open_trainer
 
+from . import capture_openings
 from .game_factory import make_game
 from .models import CoreTrainingResponse, GameConfig
 
@@ -118,6 +119,46 @@ def _restore_core_trainer(directory, *, checkpoint_limit=DEFAULT_MAX_BYTES):
         raise
 
 
+def _incorporate_openings(trainer, directory):
+    """Only change the curriculum between fully committed iterations."""
+    path = Path(directory).parent / "capture.sqlite3"
+    if not path.is_file():
+        return False
+    with closing(sqlite3.connect(path.absolute().as_uri() + "?mode=ro", uri=True)) as db:
+        db.execute("PRAGMA cache_size=-8192")
+        db.execute("PRAGMA mmap_size=0")
+        db.execute("BEGIN")
+        if not db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='capture_training_openings'"
+        ).fetchone():
+            return False
+        roots, limited = capture_openings.load(db)
+    known = {
+        _canonical({k: v for k, v in root.items() if k != "weight"}) for root in trainer.game.roots
+    }
+    added = []
+    for value in roots:
+        root = _root(value)
+        if root["weight"] != 1:
+            raise ValueError("Captured openings must have neutral weights")
+        key = _canonical({k: v for k, v in root.items() if k != "weight"})
+        if key in known:
+            continue
+        if len(known) >= MAX_ROOTS:
+            limited = True
+            continue
+        known.add(key)
+        added.append(root)
+    if added:
+        target = trainer.game.with_openings(added, source_iterations=trainer.iterations)
+        if trainer.game.opening_updates is None:
+            trainer._store.backup(
+                Path(directory) / f"before-openings-{trainer.iterations}-{uuid4().hex[:8]}.sqlite3"
+            )
+        trainer._store.enable_population_training(trainer, target)
+    return limited
+
+
 class _Flag:
     """Independent single-byte signals cannot inherit a lock from a killed worker."""
 
@@ -179,6 +220,8 @@ def _train(directory, permission, stopped, parent_pid, checkpoint_limit):
         )
         status.information_sets, status.averaged_information_sets = store.counts()
         status.checkpoint_bytes = store.bytes_on_disk()
+        status.training_roots = len(trainer.game.roots)
+        status.observed_openings = trainer.game.observed_opening_count
 
     try:
         os.nice(10)
@@ -193,6 +236,7 @@ def _train(directory, permission, stopped, parent_pid, checkpoint_limit):
         record_saved(trainer)
         publish("waiting_for_idle", force=True)
         while not cooperate():
+            status.opening_capacity_reached = _incorporate_openings(trainer, directory)
             # No wall deadline: foreground pauses must not discard a long iteration.
             diagnostics = trainer.train(1, should_cancel=cooperate)
             if not diagnostics.completed_iterations:

@@ -18,6 +18,7 @@ from .mushroom_abstraction import MushroomContextGame, MushroomContextState
 
 VERSION = "mushroom-population-v1"
 ANTE_VERSION = "mushroom-population-ante-v2"
+OPENINGS_VERSION = "mushroom-population-observed-v3"
 MAX_ROOTS = 1024
 SAFE = (1 << 53) - 1
 
@@ -70,13 +71,41 @@ def _root(value):
     }
 
 
+def public_opening(model):
+    """Rotate only public funding and seat eligibility; never copy private cards."""
+    if type(model) is not MushroomContextGame or model.num_players != 8:
+        raise ValueError("Observed openings require an eight-seat public context")
+    game = model.base_game
+    if game.ante != 4:
+        raise ValueError("Observed openings require the current ante rules")
+    order = tuple((game.button + i) % 8 for i in range(8))
+    return {
+        "weight": 1,
+        "stacks": [game.initial_stacks[p] for p in order],
+        "outstanding": [game.initial_outstanding[p] for p in order],
+        "waiting_for_top_up": [
+            i for i, p in enumerate(order) if p in game.initial_waiting_for_top_up
+        ],
+        "button": 0,
+    }
+
+
 class MushroomPopulationGame:
     game_id = "mushroom"
     num_players = 8
     supports_exact_enumeration = False
     abstraction_version = VERSION
 
-    def __init__(self, roots, *, horizon=2, warm_start=None, ante=0, rule_migration=None):
+    def __init__(
+        self,
+        roots,
+        *,
+        horizon=2,
+        warm_start=None,
+        ante=0,
+        rule_migration=None,
+        opening_updates=None,
+    ):
         if type(ante) is not int or ante not in (0, 4):
             raise ValueError("Population ante must be zero or four")
         if rule_migration is not None and (
@@ -92,6 +121,26 @@ class MushroomPopulationGame:
             raise ValueError("Population horizon must be between one and four hands")
         if not isinstance(roots, (tuple, list)) or not 1 <= len(roots) <= MAX_ROOTS:
             raise ValueError("A bounded explicit population is required")
+        self._opening_source = None
+        if opening_updates is not None:
+            if (
+                ante != 4
+                or not isinstance(opening_updates, dict)
+                or set(opening_updates) != {"source_context", "steps"}
+                or not isinstance(opening_updates["steps"], list)
+                or not 1 <= len(opening_updates["steps"]) <= MAX_ROOTS
+            ):
+                raise ValueError("Invalid observed-opening provenance")
+            source = type(self).from_context(opening_updates["source_context"])
+            if (
+                source.opening_updates is not None
+                or source.ante != ante
+                or source.horizon != horizon
+                or source.warm_start != warm_start
+                or source.rule_migration != rule_migration
+            ):
+                raise ValueError("Observed openings must retain the source rules and provenance")
+            self._opening_source = source
         self._roots = tuple(_root(root) for root in roots)
         signatures = [
             _canonical({k: v for k, v in r.items() if k != "weight"}) for r in self._roots
@@ -112,7 +161,9 @@ class MushroomPopulationGame:
         self.horizon = horizon
         self.ante = ante
         self.training_key_prefix = f"ante{ante}:" if ante else ""
-        self.abstraction_version = ANTE_VERSION if ante else VERSION
+        self.abstraction_version = (
+            OPENINGS_VERSION if opening_updates is not None else ANTE_VERSION if ante else VERSION
+        )
         self.checkpoint_context = _canonical(
             {
                 "version": self.abstraction_version,
@@ -120,8 +171,11 @@ class MushroomPopulationGame:
                 "roots": self._roots,
                 "warm_start": warm_start,
                 **({"ante": ante, "rule_migration": rule_migration} if ante else {}),
+                **({"opening_updates": opening_updates} if opening_updates is not None else {}),
             }
         ).decode()
+        if len(self.checkpoint_context.encode()) > 1024 * 1024:
+            raise ValueError("Population context exceeds the portable manifest budget")
         self._identity = sha256(self.checkpoint_context.encode()).hexdigest()
         self._games = OrderedDict()
         self._cumulative = []
@@ -150,9 +204,30 @@ class MushroomPopulationGame:
                 raise ValueError("Warm-start opening is absent from the population")
         if rule_migration is not None:
             previous = type(self).from_context(rule_migration["source_context"])
-            if previous.ante or previous.roots != self.roots or previous.horizon != horizon:
+            retained = self._opening_source or self
+            if previous.ante or previous.roots != retained.roots or previous.horizon != horizon:
                 raise ValueError("Ante migration must retain the old opening distribution")
             previous.validate_checkpoint_iterations(rule_migration["source_iterations"])
+        if opening_updates is not None:
+            source = self._opening_source
+            added = self.roots[len(source._roots) :]
+            if not added or self.roots != self._mix_openings(source.roots, added):
+                raise ValueError("Observed openings must retain the fixed source distribution")
+            count, iteration = 0, 0
+            for step in opening_updates["steps"]:
+                if (
+                    not isinstance(step, dict)
+                    or set(step) != {"iterations", "count"}
+                    or type(step["iterations"]) is not int
+                    or step["iterations"] < iteration
+                    or type(step["count"]) is not int
+                    or not count < step["count"] <= len(added)
+                ):
+                    raise ValueError("Invalid observed-opening update history")
+                source.validate_checkpoint_iterations(step["iterations"])
+                count, iteration = step["count"], step["iterations"]
+            if count != len(added):
+                raise ValueError("Observed-opening history omits retained roots")
 
     @property
     def roots(self):
@@ -165,6 +240,67 @@ class MushroomPopulationGame:
     @property
     def rule_migration(self):
         return json.loads(self.checkpoint_context).get("rule_migration")
+
+    @property
+    def opening_updates(self):
+        return json.loads(self.checkpoint_context).get("opening_updates")
+
+    @property
+    def observed_opening_count(self):
+        return len(self._roots) - len(self._opening_source._roots) if self._opening_source else 0
+
+    @staticmethod
+    def _mix_openings(source, observed):
+        # Captured contexts share one mass, independent of how often a hand was observed.
+        weight = max(1, sum(root["weight"] for root in source) // len(observed))
+        return source + [{**root, "weight": weight} for root in observed]
+
+    def with_openings(self, openings, *, source_iterations):
+        """Append public financial contexts; retained regrets are warm-start initialization."""
+        if self.ante != 4:
+            raise ValueError("Observed openings require the current ante rules")
+        self.validate_checkpoint_iterations(source_iterations)
+        source = self._opening_source or self
+        observed = self.roots[len(source._roots) :]
+        identities = {
+            _canonical({k: v for k, v in root.items() if k != "weight"}) for root in self.roots
+        }
+        for value in openings:
+            root = _root(value)
+            if root["weight"] != 1:
+                raise ValueError("Observed openings use one neutral weight per distinct context")
+            identity = _canonical({k: v for k, v in root.items() if k != "weight"})
+            if identity not in identities:
+                identities.add(identity)
+                observed.append(json.loads(_canonical(root)))
+        if len(observed) == self.observed_opening_count:
+            return self
+        steps = self.opening_updates["steps"] if self.opening_updates else []
+        return type(self)(
+            self._mix_openings(source.roots, observed),
+            horizon=self.horizon,
+            ante=self.ante,
+            warm_start=self.warm_start,
+            rule_migration=self.rule_migration,
+            opening_updates={
+                "source_context": source.checkpoint_context,
+                "steps": steps + [{"iterations": source_iterations, "count": len(observed)}],
+            },
+        )
+
+    def validate_opening_update(self, previous, *, source_iterations):
+        if (
+            type(previous) is not MushroomPopulationGame
+            or self.opening_updates is None
+            or sha256(self.checkpoint_context.encode()).hexdigest() != self._identity
+        ):
+            raise ValueError("Observed-opening update does not match the source trainer")
+        expected = previous.with_openings(
+            [{**root, "weight": 1} for root in self.roots[len(self._opening_source._roots) :]],
+            source_iterations=source_iterations,
+        )
+        if expected is previous or expected.checkpoint_context != self.checkpoint_context:
+            raise ValueError("Observed-opening update does not match the committed source")
 
     @classmethod
     def default(cls, *, horizon=2, ante=0):
@@ -212,8 +348,23 @@ class MushroomPopulationGame:
                         {"version", "horizon", "roots", "warm_start", "ante", "rule_migration"}
                     ),
                 ),
+                (
+                    OPENINGS_VERSION,
+                    frozenset(
+                        {
+                            "version",
+                            "horizon",
+                            "roots",
+                            "warm_start",
+                            "ante",
+                            "rule_migration",
+                            "opening_updates",
+                        }
+                    ),
+                ),
             )
-            or (value["version"] == ANTE_VERSION and value["ante"] != 4)
+            or (value["version"] in (ANTE_VERSION, OPENINGS_VERSION) and value["ante"] != 4)
+            or (value["version"] == OPENINGS_VERSION and value["opening_updates"] is None)
             or _canonical(value).decode() != context
         ):
             raise ValueError("Unsupported or noncanonical population context")
@@ -223,6 +374,7 @@ class MushroomPopulationGame:
             warm_start=value["warm_start"],
             ante=value.get("ante", 0),
             rule_migration=value.get("rule_migration"),
+            opening_updates=value.get("opening_updates"),
         )
 
     def with_ante(self, *, source_iterations):
@@ -265,7 +417,7 @@ class MushroomPopulationGame:
     def with_warm_start(self, previous_game, *, source_iterations):
         if type(previous_game) is not MushroomContextGame:
             raise ValueError("Population warm start requires a fixed mushroom context game")
-        if self.warm_start is not None:
+        if self.warm_start is not None or self.opening_updates is not None:
             raise ValueError("Population already has warm-start provenance")
         game = type(self)(
             self.roots,
@@ -284,6 +436,7 @@ class MushroomPopulationGame:
         if (
             not isinstance(self.checkpoint_context, str)
             or sha256(self.checkpoint_context.encode()).hexdigest() != self._identity
+            or self.opening_updates is not None
             or type(previous_game) is not MushroomContextGame
             or previous_game.num_players != self.num_players
             or previous_game.rules_version != self.rules_version
@@ -309,6 +462,10 @@ class MushroomPopulationGame:
             or (
                 self.rule_migration is not None
                 and iterations < self.rule_migration["source_iterations"]
+            )
+            or (
+                self.opening_updates is not None
+                and iterations < self.opening_updates["steps"][-1]["iterations"]
             )
         ):
             raise ValueError("Checkpoint iterations precede the declared population warm start")
