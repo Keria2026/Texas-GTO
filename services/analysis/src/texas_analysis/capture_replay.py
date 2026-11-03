@@ -85,6 +85,8 @@ def _opening(events, actions):
                 _require(not blinds and player not in fees, "invalid_fee_order")
                 _require(data["amount_delta"] in (20, 40), "unsupported_mushroom_fee")
                 fees[player] = data["amount_delta"]
+            elif action == "ANTE":
+                raise ReplayUnavailable("ante_not_supported")
             elif action in FORCED:
                 _require(player in fees and action not in blinds, "unsupported_forced_bets")
                 _require(data["amount_delta"] == FORCED[action], "unsupported_forced_bets")

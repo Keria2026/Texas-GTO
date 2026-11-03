@@ -23,6 +23,7 @@ async function command(message: object): Promise<unknown> {
 }
 const states: Record<string, string> = { ready: '已连接', disconnected: '未连接', connecting: '连接中', retrying: '等待重连', unsupported: '后端不支持', error: '通信错误' };
 function App() {
+  const manifest = chrome.runtime.getManifest();
   const [status, setStatus] = useState<Status>();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -74,7 +75,7 @@ function App() {
   const latest = status?.sessions[0];
   const pending = status?.sessions.reduce((n, s) => n + BigInt(s.last) - BigInt(s.ack), 0n) ?? 0n;
   return <main>
-    <header><h1>TGTO 采集</h1><span className="version">0.6.1 预览</span></header>
+    <header><h1>TGTO 采集</h1><span className="version">{manifest.version_name ?? manifest.version} · {manifest.version}</span></header>
     <p className="intro">逐条记录网络消息，离线保留，确认后完成传输。</p>
     {(error || status?.fault) && <p className="notice" role="alert">{error || status?.fault}</p>}
     <section aria-labelledby="recommendation-title"><h2 id="recommendation-title">八人局行动建议</h2>
@@ -92,12 +93,12 @@ function App() {
         <p className="help">默认保存时间、方向、长度与摘要。原始载荷可能含敏感信息，不会上传后端。</p>
         <div className="actions"><button disabled={busy || !!active || !status.tabs.length} onClick={() => void run({ type: 'start', tabId: Number(tab || status.tabs[0]?.id), raw })}>开始采集</button>
           <button className="secondary" disabled={busy || !active} onClick={() => void run({ type: 'stop' })}>停止采集</button></div>
-        <p className="help">开始之前的消息无法补取。后台重启会恢复此前的采集；中断当手不推荐行动。刷新页面需重新开始采集。</p>
+        <p className="help">中途入桌会等待下一手完整开局；单手校验失败后继续监听下一手。服务断线会自动重连、补传已保存记录。刷新页面需重新开始采集。</p>
       </section>
       <section aria-labelledby="business-title"><h2 id="business-title">牌桌业务数据</h2>
-        <p role="status">{({ ready: '业务适配已就绪', waiting_client: '等待 WPK 客户端加载', waiting_seat: '等待本人入座', interrupted: '业务采集已中断', stopped: '业务采集已停止', inactive: '业务采集未启动' } as Record<string, string>)[status.businessStatus] ?? status.businessStatus}</p>
+        <p role="status">{({ ready: '业务适配已就绪', waiting_client: '等待 WPK 客户端加载', waiting_seat: '等待本人座位恢复', waiting_hand: '本手数据有缺口，继续采集并等待下一手完整开局', interrupted: '业务采集已中断', stopped: '业务采集已停止', inactive: '业务采集未启动' } as Record<string, string>)[status.businessStatus] ?? status.businessStatus}</p>
         {status.business?.error && <p className="notice">{status.business.error}。已记录数据可导出；重新开始采集会创建新会话。</p>}
-        {status.business?.checkpoint && <BusinessView checkpoint={status.business.checkpoint} stale={status.business.state !== 'active'} />}
+        {status.business?.checkpoint && <BusinessView checkpoint={status.business.checkpoint} stale={status.business.state !== 'active' || status.businessStatus !== 'ready'} />}
         {status.business && <>
           <p className="help">业务写入 {status.business.last} 条，后端确认 {status.business.ack} 条。{!status.backendCapabilities.includes('capture_events_v1') && '后端尚未声明业务事件能力，记录保留在本地。'}</p>
           <p className="help">全部业务会话共 {status.businessPending} 条待确认记录。</p>
@@ -148,6 +149,7 @@ function App() {
 }
 const actionNames = { FOLD: '弃牌', CHECK: '过牌', CALL: '跟注', BET: '下注', RAISE: '加注', ALL_IN: '全下' };
 const unavailableReasons: Record<string, string> = {
+  ante_not_supported: '已采到本桌前注，当前策略模型尚未支持这一规则，暂不推荐。',
   not_hero_turn: '等待轮到你行动。', requires_eight_participants: '当前推荐支持八人实际参与的牌局。',
   incomplete_action_history: '本手采集有缺口，等待下一手完整数据。', hero_cards_unavailable: '等待确认你的两张手牌。',
   mushroom_ledger_unavailable: '蘑菇池及缴费归属尚未确认，继续采集结算记录。',

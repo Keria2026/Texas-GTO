@@ -56,7 +56,7 @@ export function installWpkPage(binding: string) {
     if (name === 'WP_dealNotify' || name === 'WP_bankerChangeNotify') roomClosed = false;
     const game = __require('WPGameData').WPGameData.Instance;
     if (!CurrentUserInfo?.user?.userId || String(CurrentUserInfo.user.userId) === '0') {
-      if (lastVisible) throw Error('Own identity lost'); report('waiting_seat'); return;
+      report('waiting_seat'); return;
     }
     const currentOwn = identity(CurrentUserInfo.user.userId);
     if (initialOwn && initialOwn !== currentOwn) throw Error('Account changed');
@@ -71,7 +71,7 @@ export function installWpkPage(binding: string) {
         players: people.map((p: any) => ({ player_id: player(p.userId), seat: integer(p.seatNum), stack: integer(p.currentScore) })) };
       lastVisible = visible;
     } else if (lastVisible && ['WP_playResultNotify', 'C_playLogNotify', 'C_closeRoomNotify'].includes(name)) visible = lastVisible;
-    else { if (lastVisible) throw Error('Own seat no longer visible'); report('waiting_seat'); return; }
+    else { report('waiting_seat'); return; }
     const data: any = { version: 'wpk/1', event: name, visible, deal_hand: name === 'WP_dealNotify' ? integer(body.currentBoutNum) : null,
       actions: [], turn: null, result: null, log: null };
     if (['WP_actionNotify', 'WP_actionHistoryNotify'].includes(name)) data.actions = list(body.actionList, 256).map((a: any) => ({
@@ -91,8 +91,9 @@ export function installWpkPage(binding: string) {
     }
     const text = JSON.stringify(data);
     if (text.length > 256 * 1024) throw Error('DTO too large');
+    report('ready');
     if (name === 'snapshot' && text === previous) return;
-    previous = text; report('ready'); root[binding](JSON.stringify({ dto: data }));
+    previous = text; root[binding](JSON.stringify({ dto: data }));
     if (name === 'C_closeRoomNotify') roomClosed = true;
   }
   function stop() {

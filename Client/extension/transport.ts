@@ -63,7 +63,8 @@ export class ResearchSocket {
     clearTimeout(this.deadline); clearInterval(this.heartbeat);
   }
   open(): void {
-    if (!this.enabled) return;
+    if (!this.enabled || this.socket?.readyState === WebSocket.CONNECTING || this.socket?.readyState === WebSocket.OPEN) return;
+    clearTimeout(this.retryTimer);
     const generation = ++this.generation;
     const ws = new WebSocket(this.url);
     this.socket = ws; this.ready = false; this.flight = undefined;
@@ -173,6 +174,7 @@ export class ResearchSocket {
     ws.onclose = event => {
       if (generation !== this.generation) return;
       this.generation++; // Retire asynchronous messages belonging to the closed connection.
+      this.socket = undefined;
       this.clearTimers(); this.ready = false; this.flight = undefined; this.serverStatus = undefined; this.captureStates.clear(); this.captureProfiles.clear(); this.recommendations.clear(); this.capabilities.clear();
       if (!this.enabled) return;
       if ([1008, 4401, 4403].includes(event.code)) {

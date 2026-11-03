@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { chromium } from 'playwright';
 import { WebSocketServer } from 'ws';
 import { startBackend } from '../tools/reference-backend.ts';
+const manifest = JSON.parse(await readFile('dist/manifest.json', 'utf8'));
 
 async function until(check, timeout = 15000) {
   const end = Date.now() + timeout;
@@ -36,6 +37,7 @@ test('production package loads its service worker, WASM and sidebar without synt
     const status = await send(panel, { type: 'status' });
     assert.equal(status.wasm, 'ready'); assert.equal(status.tabs.length, 0);
     assert.equal(await panel.getByRole('heading', { name: 'TGTO 采集' }).count(), 1);
+    assert.equal(await panel.locator('.version').textContent(), `${manifest.version_name ?? manifest.version} · ${manifest.version}`);
   } finally { await context?.close(); await rm(directory, { recursive: true, force: true }); }
 });
 test('profile sidebar displays sample counts and clears stale data at sidebar widths', { timeout: 30000 }, async () => {
@@ -48,12 +50,12 @@ test('profile sidebar displays sample counts and clears stale data at sidebar wi
       if (!['sidepanel.html', 'sidepanel.js', 'sidepanel.css'].includes(name)) return route.abort();
       await route.fulfill({ body: await readFile(`dist/${name}`), contentType: name.endsWith('.html') ? 'text/html' : name.endsWith('.js') ? 'application/javascript' : 'text/css' });
     });
-    await page.addInitScript(profiles => {
+    await page.addInitScript(({ profiles, manifest }) => {
       window.profileTestStatus = { serverProfiles: profiles, sessions: [], tabs: [], transportState: 'ready', backendURL: 'ws://127.0.0.1:8765/v1/research/stream',
         wasm: 'ready', recent: [], businessStatus: 'inactive', businessPending: '0', businessRecent: [], backendCapabilities: ['capture_profiles_v1'] };
-      window.chrome = { runtime: { onMessage: { addListener() {}, removeListener() {} },
+      window.chrome = { runtime: { getManifest: () => manifest, onMessage: { addListener() {}, removeListener() {} },
         sendMessage: async () => ({ ok: true, value: structuredClone(window.profileTestStatus) }) } };
-    }, fixture);
+    }, { profiles: fixture, manifest });
     await page.goto('http://profiles.test/sidepanel.html');
     const section = page.locator('section[aria-labelledby="profiles-title"]');
     await section.getByText('本人', { exact: true }).waitFor();
@@ -86,13 +88,13 @@ test('recommendation sidebar shows raise total and payment, then clears on inval
       if (!['sidepanel.html', 'sidepanel.js', 'sidepanel.css'].includes(name)) return route.abort();
       await route.fulfill({ body: await readFile(`dist/${name}`), contentType: name.endsWith('.html') ? 'text/html' : name.endsWith('.js') ? 'application/javascript' : 'text/css' });
     });
-    await page.addInitScript(() => {
+    await page.addInitScript(manifest => {
       window.recommendationTestStatus = { sessions: [], tabs: [], transportState: 'ready', backendURL: 'ws://127.0.0.1:8765/v1/research/stream',
         wasm: 'ready', recent: [], businessStatus: 'ready', businessPending: '0', businessRecent: [], backendCapabilities: ['capture_recommendations_v1'],
         recommendation: { status: 'ready', hand_id: 'table-1:2', selected_action: 0, expires_at_ms: Date.now() + 10000, warnings: [],
           actions: [{ action: 'RAISE', label: 'raise_min', amount_delta: 22, raise_to: 24, probability: 1 }],
           model: { iterations: 5, version: 'synthetic-ui-only' } } };
-      window.chrome = { runtime: { id: 'synthetic-ui', onMessage: {
+      window.chrome = { runtime: { id: 'synthetic-ui', getManifest: () => manifest, onMessage: {
         addListener(fn) { window.recommendationChanged = fn; }, removeListener() {},
       }, sendMessage: async message => {
         const value = structuredClone(window.recommendationTestStatus);
@@ -102,7 +104,7 @@ test('recommendation sidebar shows raise total and payment, then clears on inval
         }
         return { ok: true, value };
       } } };
-    });
+    }, manifest);
     await page.goto('http://recommendation.test/sidepanel.html');
     const section = page.locator('section[aria-labelledby="recommendation-title"]');
     await section.locator('strong').getByText('加注 至 24 分，本次投入 22 分', { exact: true }).waitFor();

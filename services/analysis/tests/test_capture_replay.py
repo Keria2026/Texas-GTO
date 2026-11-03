@@ -230,6 +230,7 @@ def test_wagering_and_payout_cash_never_become_the_same_public_state():
     [
         (lambda e: e[0]["data"].update(history_complete=False), "incomplete_observed_history"),
         (lambda e: e[1]["data"].update(amount_delta=21), "unsupported_mushroom_fee"),
+        (lambda e: e[5]["data"].update(action="ANTE", amount_delta=4), "ante_not_supported"),
         (lambda e: e[7]["data"].update(amount_delta=16), "unsupported_forced_bets"),
         (lambda e: e[-1]["data"]["players"][0].update(stack=None), "missing_opening_stacks"),
         (

@@ -15,6 +15,24 @@ const url = 'ws://127.0.0.1:8766/v1/research/stream';
 class TestSocket extends WS { constructor(url: string) { super(url, { origin }); } }
 globalThis.WebSocket = TestSocket as unknown as typeof WebSocket;
 
+test('an alarm reconnect releases a closed socket and does not duplicate an open connection', async () => {
+  const db = await database();
+  const server = await startBackend({ port: 8766, database: ':memory:', token, origin });
+  let state = ''; const client = new ResearchSocket(db, value => { state = value; });
+  try {
+    client.connect(url, token); await until(() => state === 'ready');
+    const first = client.socket; client.open(); client.open();
+    assert.equal(client.socket, first);
+    for (const socket of server.wss.clients) socket.terminate();
+    await until(() => state === 'retrying');
+    assert.equal(client.socket, undefined);
+    client.open(); const reconnecting = client.socket; client.open();
+    assert.equal(client.socket, reconnecting);
+    await until(() => state === 'ready');
+    assert.equal(server.wss.clients.size, 1);
+  } finally { client.stop(); await server.close(); db.db.close(); }
+});
+
 test('real WS auth, dropped ACK, replay and durable backend restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'tgto-backend-'));
   const options = { port: 8766, database: join(directory, 'capture.sqlite'), token, origin };
