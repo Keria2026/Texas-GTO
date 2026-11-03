@@ -42,6 +42,20 @@ MAX_RECOVERIES = 3
 
 
 def _open_core_trainer(directory, *, checkpoint_limit=DEFAULT_MAX_BYTES):
+    trainer = _restore_core_trainer(directory, checkpoint_limit=checkpoint_limit)
+    try:
+        if trainer.pluribus.average_mode == "sampled_uniform":
+            trainer._store.backup(
+                Path(directory) / f"before-mixture-{trainer.iterations}-{uuid4().hex[:8]}.sqlite3"
+            )
+            trainer._store.enable_mixed_average(trainer)
+        return trainer
+    except BaseException:
+        trainer._store.close()
+        raise
+
+
+def _restore_core_trainer(directory, *, checkpoint_limit=DEFAULT_MAX_BYTES):
     """Resume the frozen distribution, or back up and explicitly warm-start the old core."""
     directory = Path(directory)
     database, checkpoint = directory / "training.sqlite3", directory / "checkpoint.json"

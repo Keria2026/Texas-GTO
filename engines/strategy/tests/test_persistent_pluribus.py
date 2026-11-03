@@ -24,7 +24,7 @@ def assert_same(actual, expected):
 
 
 @pytest.mark.parametrize("game", [KuhnPoker(), LeducPoker()])
-@pytest.mark.parametrize("average_mode", ["enumerated", "sampled_uniform"])
+@pytest.mark.parametrize("average_mode", ["enumerated", "sampled_uniform", "sampled_mixture"])
 def test_disk_updates_discount_snapshots_pruning_and_restart_match_memory(
     tmp_path, game, average_mode
 ):

@@ -154,7 +154,7 @@ class Trainer:
                 )
             if pluribus is None:
                 self.pluribus = (
-                    PluribusConfig(average_mode="sampled_uniform", average_samples=16)
+                    PluribusConfig(average_mode="sampled_mixture", average_samples=16)
                     if getattr(game, "game_id", None) == "mushroom"
                     else PluribusConfig()
                 )

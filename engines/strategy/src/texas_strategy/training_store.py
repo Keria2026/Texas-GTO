@@ -581,6 +581,47 @@ class TrainingStore(Mapping[InformationSet, _TableEntry]):
         self._document = document
         self._metadata = document["metadata"]
 
+    def enable_mixed_average(self, trainer: Trainer) -> None:
+        """Change only the sampling proposal, after the caller backs up committed progress.
+
+        Both estimators target the same counts; existing nonzero averages and
+        their original start iteration remain intact. The switch is recorded.
+        """
+        from texas_strategy.pluribus import PluribusConfig
+
+        if getattr(trainer, "_store", None) is not self or trainer.game is not self.game:
+            raise ValueError("Trainer does not own this training store and game")
+        previous = trainer.pluribus
+        if previous.average_mode != "sampled_uniform":
+            raise ValueError("Mixture upgrade requires the existing uniform sampled average")
+        if _document(trainer, trainer.iterations) != self._document:
+            raise ValueError("Trainer differs from the committed averaging source")
+        updated = PluribusConfig.from_dict(
+            {
+                **previous.to_dict(),
+                "average_mode": "sampled_mixture",
+                "mixture_from": trainer.iterations + 1,
+            }
+        )
+        self.begin(trainer.iterations)
+        try:
+            trainer.pluribus = updated
+            document = _document(trainer, trainer.iterations)
+            self._db.execute(
+                "UPDATE training_meta SET document=? WHERE singleton=1",
+                (_canonical(document).decode(),),
+            )
+            self._counted_changes += 1
+            self._check_counted_changes()
+            self._db.execute("COMMIT")
+            self._rollback_counts = None
+        except BaseException:
+            trainer.pluribus = previous
+            self.rollback()
+            raise
+        self._document = document
+        self._metadata = document["metadata"]
+
     def enable_population_training(self, trainer: Trainer, population_game: Any) -> None:
         """Explicitly retain a fixed-root model as a population warm start.
 

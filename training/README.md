@@ -60,12 +60,12 @@ uv run --frozen texas-research train --game mushroom --players 8 \
 
 默认每席 800 分，跨手保留实际筹码、池额、缴费归属和信息边界；`--session-hands` 是明确的有限训练视野，末尾按实际缴费退还余池，与无限期真实会话不同。视野、规则及信息编码进入策略工件兼容性检查，起始筹码另外绑定 checkpoint 续训上下文；不能拿不同视野的检查点静默续训。省略 `--abstraction` 可运行完整记忆模型作离线对照，它不兼容当前核心模型的检查点。
 
-新建蘑菇模型默认 `average_mode=sampled_uniform`、`average_samples=16`、`strategy_interval=1`：每轮每席采样 16 条翻前路径，以对手前缀采样概率纠正累计量。原枚举算法与旧工件继续使用原配置；不会因为升级代码就悄悄改写旧平均。显式提供旧式配置但未写 average_mode 时仍为枚举模式。样本少、深层权重大时仍可能方差很高；有平均条目不表示策略成熟。未覆盖节点仍拒绝推荐，详见[平均策略实现](../docs/pluribus-implementation.md#采样平均策略扩展)。
+新建蘑菇模型默认 `average_mode=sampled_mixture`、`average_samples=16`、`strategy_interval=1`：每轮每席采样 16 条翻前路径，整条路径等概率选择均匀对手动作或优先 check／call，再按完整混合前缀密度纠正累计量。核心服务升级已有均匀采样库时先完整备份，再记录下一轮切换，保留原累计和 RNG；通用工件导入仍按工件配置恢复。显式提供旧式配置但未写 average_mode 时仍为枚举模式。样本少、深层权重大时仍可能方差很高；有平均条目不表示已有充分收益反馈或策略成熟。未覆盖节点仍拒绝推荐，详见[平均策略实现](../docs/pluribus-implementation.md#采样平均策略扩展)。
 
-尚缺生产信息／动作抽象、长期会话的延续价值、re-straddle 和真实输入匹配。自动训练候选不会自动成为实局推荐来源。
+仍需扩大和独立评测策略覆盖、长期会话的延续价值及 re-straddle。当前预览允许已覆盖节点进入实采推荐，但不是已验收的成熟策略库，见[八人建议边界](../docs/eight-player-recommendations.md)。
 
 完整遍历用于可验证小博弈；德州只接受有预算的 MCCFR 实验和抽样对照。尚无训练成熟的六人策略库，稀疏工件的默认均匀回退不算覆盖。根本优化方向是抽象和测量后的训练优化，不能靠增加一条服务命令声称已有超人水平。
 
 目标生产架构将全部训练作为服务器作业运行，与扩展实时分析的资源隔离；现有 CLI 为该作业的算法入口。大规模作业部署在独立服务器 CPU 进程，显式设置 `--seconds`、`--max-nodes` 和操作系统内存约束；当前未配置付费基础设施或 GPU 任务。
 
-核心策略可通过 `texas_strategy.persistent_policy.policy_snapshot(game, database)` 的短只读事务按信息集查询。它固定同一已提交轮次，检查规则与合法动作，只归一化已有平均策略；默认缺失即报错。该组件尚未替代 WPK 公开状态适配、公共范围搜索和推荐协议。已有库升级采样平均须停训练并备份，再调用 `store.enable_sampled_average(trainer)`；仅在第一下注轮平均全部为零时允许，保留所有遗憾、后续平均与 RNG，并把开始轮次写入配置。非零旧翻前平均不会被丢弃或静默混用。
+核心策略可通过 `texas_strategy.persistent_policy.policy_snapshot(game, database)` 的短只读事务按信息集查询。它固定同一已提交轮次，检查规则与合法动作，只归一化已有平均策略；默认缺失即报错。WPK 推荐另经公开状态、账本和事件版本校验。从枚举模式升级采样平均须停训练并备份，再调用 `store.enable_sampled_average(trainer)`；仅在第一下注轮平均全部为零时允许，保留所有遗憾、后续平均与 RNG，并把开始轮次写入配置。均匀采样切换混合采样使用 `store.enable_mixed_average(trainer)`，两者期望累计相同，非零均匀平均无需丢弃。

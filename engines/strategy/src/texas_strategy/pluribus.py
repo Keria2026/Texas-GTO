@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
 ALGORITHM_VERSION = "pluribus-iteration-schedule-v1"
 SAMPLED_ALGORITHM_VERSION = "pluribus-sampled-average-v1"
+MIXTURE_ALGORITHM_VERSION = "pluribus-mixture-average-v1"
 
 
 @dataclass(frozen=True)
@@ -45,12 +46,16 @@ class PluribusConfig:
     average_mode: str = "enumerated"
     average_samples: int = 1
     sampled_average_from: int = 0
+    mixture_from: int = 0
 
     def __post_init__(self):
-        if self.average_mode not in ("enumerated", "sampled_uniform"):
+        if self.average_mode not in ("enumerated", "sampled_uniform", "sampled_mixture"):
             raise ValueError("Invalid Pluribus average mode")
         _positive_integer(self.average_samples, "average_samples")
         _positive_integer(self.sampled_average_from, "sampled_average_from", allow_zero=True)
+        _positive_integer(self.mixture_from, "mixture_from", allow_zero=True)
+        if self.average_mode != "sampled_mixture" and self.mixture_from != 0:
+            raise ValueError("mixture_from requires sampled_mixture averaging")
         if self.average_mode == "enumerated" and (
             self.average_samples != 1 or self.sampled_average_from != 0
         ):
@@ -72,10 +77,14 @@ class PluribusConfig:
 
     @property
     def algorithm_version(self):
+        if self.average_mode == "sampled_mixture":
+            return MIXTURE_ALGORITHM_VERSION
         return ALGORITHM_VERSION if self.average_mode == "enumerated" else SAMPLED_ALGORITHM_VERSION
 
     def to_dict(self):
         result = asdict(self)
+        if self.average_mode != "sampled_mixture":
+            del result["mixture_from"]
         if self.average_mode == "enumerated":
             for name in ("average_mode", "average_samples", "sampled_average_from"):
                 del result[name]
@@ -219,8 +228,11 @@ def train(
                     for action in entry.actions:
                         average(game.transition(state, action), player)
 
-        def sampled_average(player, source):
+        def sampled_average(player, source, t=t):
             state, weight = game.initial_state(), 1.0
+            mixture = config.average_mode == "sampled_mixture" and t >= config.mixture_from
+            passive_path = mixture and source.randrange(2) == 0
+            uniform_reach = passive_reach = 1.0
             while True:
                 visit()
                 actor = game.actor(state)
@@ -247,8 +259,35 @@ def train(
                         index = sample(policy, source)
                     else:
                         # Only past opponent proposals are corrected; chance and own reach stay.
-                        index = source.randrange(len(entry.actions))
-                        weight *= len(entry.actions)
+                        passive = (
+                            next(
+                                (
+                                    entry.actions.index(a)
+                                    for a in ("check", "call")
+                                    if a in entry.actions
+                                ),
+                                None,
+                            )
+                            if mixture
+                            else None
+                        )
+                        index = (
+                            passive
+                            if passive_path and passive is not None
+                            else source.randrange(len(entry.actions))
+                        )
+                        if mixture:
+                            uniform_reach /= len(entry.actions)
+                            passive_reach *= (
+                                1 / len(entry.actions) if passive is None else int(index == passive)
+                            )
+                            # Correct the complete mixture prefix, not the sampled branch alone.
+                            density = (uniform_reach + passive_reach) / 2
+                            if density <= 0:
+                                raise ValueError("Nonfinite sampled average importance weight")
+                            weight = 1 / density
+                        else:
+                            weight *= len(entry.actions)
                         if not isfinite(weight):
                             raise ValueError("Nonfinite sampled average importance weight")
                     state = game.transition(state, entry.actions[index])
@@ -300,10 +339,13 @@ def train(
                     elif t >= config.sampled_average_from:
                         for sample_index in range(config.average_samples):
                             # Stable domain separation; averaging never advances regret RNG.
-                            source = Random(
-                                f"{config.algorithm_version}:{trainer.seed}:"
-                                f"{t}:{player}:{sample_index}"
+                            version = (
+                                SAMPLED_ALGORITHM_VERSION
+                                if config.average_mode == "sampled_mixture"
+                                and t < config.mixture_from
+                                else config.algorithm_version
                             )
+                            source = Random(f"{version}:{trainer.seed}:{t}:{player}:{sample_index}")
                             sampled_average(player, source)
                 prune = t > config.prune_after and rng.random() >= 0.05
                 full += int(not prune)

@@ -59,12 +59,12 @@ class AverageTree:
         return (0, 0, 0)  # Freeze all seeded regrets during this expectation experiment.
 
 
-def seeded_tree(samples=1):
+def seeded_tree(samples=1, *, game=None, average_mode="sampled_uniform"):
     trainer = Trainer(
-        AverageTree(),
+        AverageTree() if game is None else game,
         algorithm="pluribus",
         pluribus={
-            "average_mode": "sampled_uniform",
+            "average_mode": average_mode,
             "average_samples": samples,
             "discount_until": 0,
             "snapshot_interval": 1000,
@@ -176,6 +176,7 @@ def test_sampled_rng_is_separate_and_sample_count_does_not_change_regret_updates
             {**common, "average_after": 1000},
             {**common, "average_mode": "sampled_uniform", "average_samples": 1},
             {**common, "average_mode": "sampled_uniform", "average_samples": 16},
+            {**common, "average_mode": "sampled_mixture", "average_samples": 16},
         )
     ]
     for trainer in trainers:
@@ -191,13 +192,14 @@ def test_sampled_rng_is_separate_and_sample_count_does_not_change_regret_updates
             )
 
 
-def test_sampled_average_cancel_checkpoint_and_retry_are_deterministic(tmp_path):
+@pytest.mark.parametrize("mode", ["sampled_uniform", "sampled_mixture"])
+def test_sampled_average_cancel_checkpoint_and_retry_are_deterministic(tmp_path, mode):
     trainer = Trainer(
         LeducPoker(),
         algorithm="pluribus",
         seed=-29,
         pluribus={
-            "average_mode": "sampled_uniform",
+            "average_mode": mode,
             "average_samples": 16,
             "snapshot_interval": 2,
             "discount_interval": 2,
@@ -216,7 +218,8 @@ def test_sampled_average_cancel_checkpoint_and_retry_are_deterministic(tmp_path)
     assert trainer._betting_rounds == expected._betting_rounds
     assert trainer._rng.getstate() == expected._rng.getstate()
     assert (
-        Blueprint.from_trainer(trainer).metadata["algorithm_version"] == SAMPLED_ALGORITHM_VERSION
+        Blueprint.from_trainer(trainer).metadata["algorithm_version"]
+        == trainer.pluribus.algorithm_version
     )
 
 
@@ -312,10 +315,9 @@ class LongAveragePath:
         return (0, 0)
 
 
-def test_nonfinite_importance_weight_aborts_without_clipping_or_partial_progress():
-    trainer = Trainer(
-        LongAveragePath(), algorithm="pluribus", pluribus={"average_mode": "sampled_uniform"}
-    )
+@pytest.mark.parametrize("mode", ["sampled_uniform", "sampled_mixture"])
+def test_nonfinite_importance_weight_aborts_without_clipping_or_partial_progress(mode):
+    trainer = Trainer(LongAveragePath(), algorithm="pluribus", pluribus={"average_mode": mode})
     rng = trainer._rng.getstate()
     with pytest.raises(ValueError, match="importance weight"):
         trainer.train(1)
