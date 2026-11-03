@@ -25,7 +25,7 @@ class RecommendationUnavailable(ValueError):
     pass
 
 
-def prepare_query(state, prefix):
+def prepare_query(state, prefix, *, ledger_resolver=None):
     """Bind a rolling two-hand approximation to observed cash and mushroom rights."""
     if state["gap"] or state["closed"] or not state["history_complete"]:
         raise RecommendationUnavailable("incomplete_action_history")
@@ -43,8 +43,12 @@ def prepare_query(state, prefix):
     if "hero" not in replay.player_ids or replay.pending_returns != (0,) * 8:
         raise RecommendationUnavailable("public_state_incomplete")
     try:
-        ledger = derive_mushroom_ledger(
-            hand_id=state["hand_id"], fees=replay.fees, settlements=state["settlements"]
+        ledger = (
+            ledger_resolver(hand_id=state["hand_id"], fees=replay.fees)
+            if ledger_resolver is not None
+            else derive_mushroom_ledger(
+                hand_id=state["hand_id"], fees=replay.fees, settlements=state["settlements"]
+            )
         )
     except ValueError as error:
         raise RecommendationUnavailable("mushroom_ledger_unavailable") from error
@@ -122,7 +126,17 @@ def _actions(replay, query, probabilities, turn):
     return result
 
 
-def recommend(*, source, through, state, prefix, policy_path, now_ms=None, should_cancel=None):
+def recommend(
+    *,
+    source,
+    through,
+    state,
+    prefix,
+    policy_path,
+    now_ms=None,
+    should_cancel=None,
+    ledger_resolver=None,
+):
     """One short committed policy snapshot; timestamps also reject queued old hands."""
     started = monotonic()
 
@@ -154,7 +168,7 @@ def recommend(*, source, through, state, prefix, policy_path, now_ms=None, shoul
         captured = int(datetime.fromisoformat(prefix[-1]["captured_at"]).timestamp() * 1000)
         if not -5000 <= now_ms - captured < FRESHNESS_MS:
             raise RecommendationUnavailable("observation_expired")
-        model, replay, query = prepare_query(state, prefix)
+        model, replay, query = prepare_query(state, prefix, ledger_resolver=ledger_resolver)
         check_cancelled()
         if policy_path is None or not policy_path.is_file():
             raise RecommendationUnavailable("model_unavailable")

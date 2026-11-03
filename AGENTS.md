@@ -6,6 +6,8 @@
 
 用户新增交付要求：前后端统一到 GitHub Texas-GTO；每次推送与合并重新检查、构建并生成 Serve（Ubuntu 安装包）和 Client（Chrome 扩展）。正式扩展源码已整合到本仓库 `Client/`，后续在此开发；原 `/home/ubuntu/Project/TGTO-FronEnd` 保留作迁移副本。根 `.github/workflows/ci.yml` 统一检查；`deploy/build-release.sh` 打包，`texas-state export/restore` 迁移已提交训练库与 WPK 学习数据库。私有数据库走单独迁移包，不进入公开代码或 CI 程序工件。整合／交付流程不代表八人策略质量已验收。
 
+长牌局账本已改从 `capture_learning_outcomes` 按 Origin／source／事件前缀隔离、按手号流式回放，不再因侧栏只保留八手而遗失已观察的蘑菇池锚点。迟到结算只影响到达后的查询；缺手、未配对和已知派奖冲突仍保留原拒绝规则。查询证据最多保留 17 条，原始记录和不可变结算不删；此改动不补造未知起始权益，也不代表新增策略覆盖。
+
 2026-11-03 后续：0.6.1 保持推荐协议与 blueprint 来源，推荐计算改为每连接一个在算任务＋一个最新待算版本；新业务取消旧任务，ACK／心跳继续处理，断线回收线程。侧栏所有刷新共用版本，防止迟到状态恢复旧建议。研究层 `MushroomFirstHandRoot.solve` 增加半均匀／半目标私牌的重要性提议，完整公共后验不变，非重点权重不得截断；历史同抽象键只查一次。2,520 世界精确抽样测试通过，但第 5899 轮实库合成搜索仍缺后续策略，未接入实采搜索或画像调整。
 
 2026-11-03：正式 TGTO 插件 0.6.0 预览新增 `capture_recommendations_v1`，仅在八个实际参与席、完整公开回放、可信蘑菇权益和平均策略覆盖均通过时推送行动。旧 `capture.state` 保持 unsupported 兼容，不能据此误报新链路未接通；同样不能把合成 169 类开局命中说成实局验收。当前建议来源为 Pluribus 两手分桶 blueprint，无在线搜索或画像调整；re-straddle、4–7 人和未覆盖节点仍不给建议。用户已明确稍后开始八人实局，先交付代码和插件。详见 `docs/eight-player-recommendations.md`。自动核心现为 `mushroom_population`，489 个机会开局共享策略表，第 5832 轮的固定开局旧值作为热启动保留；累计轮数不能当作每类开局的训练量。

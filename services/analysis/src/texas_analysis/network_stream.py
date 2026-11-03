@@ -30,7 +30,7 @@ from .capture_contract import (
     BusinessBatch,
     BusinessEvent,
 )
-from .capture_ledger import derive_mushroom_ledger
+from .capture_ledger import derive_mushroom_ledger, derive_recorded_mushroom_ledger
 from .capture_recommendation import CAPABILITY as RECOMMENDATIONS_CAPABILITY
 from .capture_recommendation import recommend
 from .capture_replay import ReplayUnavailable, replay_capture
@@ -302,7 +302,30 @@ class NetworkStore:
         if observed is None:
             return None
         through, state, prefix = observed
-        return self._state_response(source, through, state, prefix)
+        return self._state_response(
+            source,
+            through,
+            state,
+            prefix,
+            ledger_resolver=lambda **kwargs: self._ledger(origin, source, through, **kwargs),
+        )
+
+    def _ledger(self, origin, source, through, *, hand_id, fees, should_cancel=None):
+        def check():
+            if should_cancel is not None and should_cancel():
+                raise CancellationError("Observation changed; no ledger available")
+
+        with closing(self.connect()) as db, db:
+            db.execute("BEGIN")
+            return derive_recorded_mushroom_ledger(
+                db,
+                origin=origin,
+                source=source,
+                through=through,
+                hand_id=hand_id,
+                fees=fees,
+                check=check,
+            )
 
     def _observation(self, origin, source):
         with closing(self.connect()) as db, db:
@@ -329,6 +352,9 @@ class NetworkStore:
             prefix=prefix,
             policy_path=self.policy_path,
             should_cancel=should_cancel,
+            ledger_resolver=lambda **kwargs: self._ledger(
+                origin, source, through, should_cancel=should_cancel, **kwargs
+            ),
         )
         # Another connection may commit while the pinned model is being queried.
         with closing(self.connect()) as db:
@@ -338,7 +364,7 @@ class NetworkStore:
         return result if current is not None and current[0] == through else None
 
     @staticmethod
-    def _state_response(source, through, state, prefix):
+    def _state_response(source, through, state, prefix, *, ledger_resolver=None):
         verified = ledger_verified = False
         if prefix:
             try:
@@ -348,11 +374,14 @@ class NetworkStore:
                 pass
             else:
                 try:
-                    derive_mushroom_ledger(
-                        hand_id=state["hand_id"],
-                        fees=replay.fees,
-                        settlements=state["settlements"],
-                    )
+                    if ledger_resolver is not None:
+                        ledger_resolver(hand_id=state["hand_id"], fees=replay.fees)
+                    else:
+                        derive_mushroom_ledger(
+                            hand_id=state["hand_id"],
+                            fees=replay.fees,
+                            settlements=state["settlements"],
+                        )
                     ledger_verified = True
                 except ValueError:
                     pass

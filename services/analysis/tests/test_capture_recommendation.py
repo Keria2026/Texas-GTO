@@ -137,10 +137,10 @@ def batch(events):
     )
 
 
-def fixture_model(path, events, *, average=True):
+def fixture_model(path, events, *, average=True, ledger_resolver=None):
     """Insert an explicitly synthetic weighted policy to test transport, not strength."""
     state = observation(events)
-    game, _, query = prepare_query(state, events)
+    game, _, query = prepare_query(state, events, ledger_resolver=ledger_resolver)
     trainer = open_trainer(game, path)
     try:
         trainer._store.begin(0)
@@ -260,6 +260,46 @@ def test_backend_rechecks_head_after_model_read(tmp_path, monkeypatch):
 
     monkeypatch.setattr("texas_analysis.network_stream.recommend", change)
     assert store.recommendation(ORIGIN, "synthetic-eight") is None
+
+
+def test_stored_ledger_keeps_eight_player_recommendation_after_anchor_leaves_ui_window(tmp_path):
+    events = eight_player_events()
+    records = []
+    for hand in range(1, 12):
+        event = deepcopy(events[0])
+        event["hand_id"] = f"table-1:{hand}"
+        event["data"]["hand_number"] = hand
+        if hand > 1:
+            event["data"]["pool_change"] = 180
+            for player in event["data"]["players"]:
+                player["mushroom_awarded"] = 0
+                player["net_chips"] = -player["mushroom_paid"]
+        records.append(event)
+    for event in events[1:]:
+        event["hand_id"] = "table-1:12"
+        if event["kind"] == "hand_started":
+            event["data"]["hand_number"] = 12
+    events = records + events[1:]
+    for sequence, event in enumerate(events, 1):
+        event["sequence"] = str(sequence)
+    path = tmp_path / "training.sqlite3"
+    store = NetworkStore(tmp_path / "capture.sqlite3", stream="capture", policy_path=path)
+    through = store.append(ORIGIN, batch(events))
+    state = store.state(ORIGIN, "synthetic-eight")
+    assert len(state["state"]["settlements"]) == 8
+    assert all(record["hand_id"] != "table-1:1" for record in state["state"]["settlements"])
+    assert "mushroom_ledger_anchor" not in state["analysis"]["missing_fields"]
+    fixture_model(
+        path,
+        events,
+        ledger_resolver=lambda **kwargs: store._ledger(
+            ORIGIN, "synthetic-eight", through, **kwargs
+        ),
+    )
+    result = store.recommendation(ORIGIN, "synthetic-eight")
+    assert result["status"] == "ready", result
+    assert result["through_sequence"] == through
+    assert result["actions"] and result["model"]["source"] == "pluribus_blueprint"
 
 
 @pytest.mark.parametrize("negotiated", [True, False])
