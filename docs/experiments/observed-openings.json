@@ -1,0 +1,49 @@
+{
+  "experiment": "observed-openings-runtime-upgrade",
+  "verified_at_utc": "2026-11-03T11:36:19.597651+00:00",
+  "program_commit": "006d98477b9224fca96e3d76b2892c654b23e493",
+  "client_version": "0.8.3",
+  "release": "Pr1.0",
+  "ci": {
+    "run_id": 41625859423,
+    "url": "https://github.com/Keria2026/Texas-GTO/actions/runs/41625859423",
+    "conclusion": "success",
+    "python_tests": 1223,
+    "browser_and_offline_install_checks": "passed"
+  },
+  "api_restart_seconds": 4.15,
+  "upgrade_through_verified_training_seconds": 790.92,
+  "source_iterations": 6341,
+  "verified_saved_iterations": 6342,
+  "ante_rule_iterations": 47,
+  "training_roots": 492,
+  "observed_openings": 3,
+  "opening_capacity_reached": false,
+  "source_context_preserved": true,
+  "exact_pre_upgrade_header_in_backup": true,
+  "exact_transition_rng_observed": true,
+  "capture_events_preserved": 4276,
+  "prior_capture_hashes_verified": true,
+  "memory_limit_bytes": 1073741824,
+  "oom_events": 0,
+  "oom_kills": 0,
+  "token_free_chrome_handshake": true,
+  "retrospective_coverage": {
+    "iterations": 6346,
+    "ready_inputs": 9,
+    "input_rejections": {
+      "incomplete_action_history": 18,
+      "mushroom_ledger_unavailable": 7,
+      "hero_cards_unavailable": 2
+    },
+    "inputs_with_off_tree_history": 4,
+    "inputs_with_opening_in_training": 9,
+    "policy": {
+      "missing_average": 9
+    },
+    "training_selected_samples": true,
+    "quality_evaluated": false
+  },
+  "actual_extension_reload_verified": false,
+  "independent_strategy_quality_verified": false
+}
