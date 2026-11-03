@@ -34,9 +34,10 @@ CORE_GAME = GameConfig(
     small_blind=2,
     big_blind=4,
     straddle=8,
+    ante=4,
     session_hands=2,
 )
-LEGACY_CORE_GAME = CORE_GAME.model_copy(update={"abstraction": "mushroom_context"})
+LEGACY_CORE_GAME = CORE_GAME.model_copy(update={"abstraction": "mushroom_context", "ante": 0})
 MEMORY_LIMIT = 1024 * 1024 * 1024
 MAX_RECOVERIES = 3
 
@@ -44,6 +45,13 @@ MAX_RECOVERIES = 3
 def _open_core_trainer(directory, *, checkpoint_limit=DEFAULT_MAX_BYTES):
     trainer = _restore_core_trainer(directory, checkpoint_limit=checkpoint_limit)
     try:
+        if trainer.game.ante == 0:
+            trainer._store.backup(
+                Path(directory) / f"before-ante-{trainer.iterations}-{uuid4().hex[:8]}.sqlite3"
+            )
+            trainer._store.enable_ante_training(
+                trainer, trainer.game.with_ante(source_iterations=trainer.iterations)
+            )
         if trainer.pluribus.average_mode == "sampled_uniform":
             trainer._store.backup(
                 Path(directory) / f"before-mixture-{trainer.iterations}-{uuid4().hex[:8]}.sqlite3"
@@ -165,6 +173,10 @@ def _train(directory, permission, stopped, parent_pid, checkpoint_limit):
 
     def record_saved(trainer):
         status.iterations = trainer.iterations
+        migration = trainer.game.rule_migration
+        status.rule_iterations = trainer.iterations - (
+            migration["source_iterations"] if migration else 0
+        )
         status.information_sets, status.averaged_information_sets = store.counts()
         status.checkpoint_bytes = store.bytes_on_disk()
 

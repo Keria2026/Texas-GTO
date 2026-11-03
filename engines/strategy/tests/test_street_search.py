@@ -101,8 +101,9 @@ def test_descendant_target_is_queried_at_its_actual_depth():
 
 
 @pytest.mark.parametrize("button", [0, 3, 7])
-def test_street_root_removes_only_current_street_actions_and_keeps_full_range(button):
-    model, state, history = observed_prefix(button=button, flop=True, actions=2)
+@pytest.mark.parametrize("ante", [0, 4])
+def test_street_root_removes_only_current_street_actions_and_keeps_full_range(button, ante):
+    model, state, history = observed_prefix(button=button, flop=True, actions=2, ante=ante)
     policy = prefix_policy(model, state, history)
     root = MushroomStreetRoot(model, strip_private(state), policy, budget=TraversalBudget(100000))
     assert root.target_depth == 2

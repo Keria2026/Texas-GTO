@@ -376,7 +376,9 @@ def train(
             if store is not None:
                 # Stream old rows inside the same transaction; never copy the full table.
                 if discount or snapshot:
-                    for key, entry, stage in store.scan():
+                    prefix = getattr(game, "training_key_prefix", "")
+                    rows = store.scan(key_prefix=prefix) if prefix else store.scan()
+                    for key, entry, stage in rows:
                         if key not in working:
                             transform(entry, stage)
                             if any(entry.regrets) or any(entry.strategy_sum):
@@ -388,6 +390,8 @@ def train(
             else:
                 if discount or snapshot:
                     for key in trainer._table.keys() | working.keys():
+                        if not key[1].startswith(getattr(game, "training_key_prefix", "")):
+                            continue
                         entry = copy_entry(key) if key not in working else working[key]
                         transform(entry, rounds[key])
                 updates = {

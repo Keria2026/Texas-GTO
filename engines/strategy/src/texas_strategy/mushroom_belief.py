@@ -88,6 +88,7 @@ class MushroomFirstHandRoot:
                 small_blind=game.small_blind,
                 big_blind=game.big_blind,
                 straddle=game.straddle,
+                ante=game.ante,
                 button=game.button,
             )
         )
@@ -189,6 +190,7 @@ class MushroomFirstHandRoot:
                     pool=self._opening.pool,
                     actions=labels,
                     legal_actions=mapping,
+                    ante=self._model.base_game.ante,
                 )
                 cache_key = self.likelihood_cache_key(key, cards, current.street)
                 if cache_key not in probabilities:
@@ -333,6 +335,7 @@ class MushroomStreetRoot(MushroomFirstHandRoot):
                 small_blind=engine.small_blind,
                 big_blind=engine.big_blind,
                 straddle=engine.straddle,
+                ante=engine.ante,
                 button=engine.button,
             )
         )

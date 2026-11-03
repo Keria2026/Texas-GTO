@@ -21,7 +21,9 @@ class MushroomHand:
     fees: tuple[int, ...]
 
     @classmethod
-    def start(cls, stacks: Sequence[int], *, button: int = 0, pool: int = 0) -> "MushroomHand":
+    def start(
+        cls, stacks: Sequence[int], *, button: int = 0, pool: int = 0, ante: int = 0
+    ) -> "MushroomHand":
         stacks = tuple(stacks)
         if not 4 <= len(stacks) <= 8:
             raise ValueError("Mushroom hands require 4 to 8 dealt players")
@@ -40,7 +42,9 @@ class MushroomHand:
         after_fees = tuple(stack - fee for stack, fee in zip(stacks, fees, strict=True))
         # Fee transfers precede all forced wagers; the Holdem engine sees only
         # the actual amount available to bet, never the escrow balance.
-        game = HoldemGame(after_fees, small_blind=2, big_blind=4, straddle=8, button=button)
+        game = HoldemGame(
+            after_fees, small_blind=2, big_blind=4, straddle=8, button=button, ante=ante
+        )
         return cls(game, game.initial_state(), stacks, pool, fees)
 
     @property
@@ -81,7 +85,7 @@ class MushroomHand:
     def next_hand(self, *, button: int) -> "MushroomHand":
         if not self.state.terminal:
             raise ValueError("Settle this hand before starting another")
-        return self.start(self.table_stacks, button=button, pool=self.pool)
+        return self.start(self.table_stacks, button=button, pool=self.pool, ante=self.game.ante)
 
     def net_changes(self) -> tuple[int, ...]:
         if not self.state.terminal:

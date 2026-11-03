@@ -37,6 +37,7 @@ class PersistentPolicy:
         self._db: sqlite3.Connection | None = db
         self._metadata = _metadata(document["metadata"], game)
         self._binding = _binding(game)
+        self._key_prefix = getattr(game, "training_key_prefix", "")
         if self._metadata["chance_sampling"] != self._binding[-1]:
             raise ValueError("Policy chance sampling does not match the game implementation")
         self._final_round = game.final_betting_round
@@ -63,6 +64,8 @@ class PersistentPolicy:
             or not information_key
         ):
             raise ValueError("Invalid policy information set")
+        if not information_key.startswith(self._key_prefix):
+            return None
         row = self._db.execute(
             "SELECT actions,strategy_sum,stage,has_average FROM training_entries "
             "WHERE player=? AND information_key=?",

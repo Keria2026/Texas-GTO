@@ -21,6 +21,7 @@ class HoldemRules:
     big_blind: int
     straddle: int | None
     button: int
+    ante: int = 0
     bet_fractions: tuple[float, ...] = (0.5, 1.0)
 
     def __post_init__(self):
@@ -36,6 +37,7 @@ class HoldemRules:
             small_blind=self.small_blind,
             big_blind=self.big_blind,
             straddle=self.straddle,
+            ante=self.ante,
             button=self.button,
             bet_fractions=self.bet_fractions,
         )
@@ -90,10 +92,13 @@ class PublicHoldemGame(HoldemGame):
             small_blind=rules.small_blind,
             big_blind=rules.big_blind,
             straddle=rules.straddle,
+            ante=rules.ante,
             button=rules.button,
             bet_fractions=rules.bet_fractions,
         )
-        self._opening_contributions = super().initial_state().contributions
+        opening = super().initial_state()
+        self._opening_contributions = opening.contributions
+        self._opening_street_bets = opening.street_bets
 
     def initial_state(self) -> PublicHoldemState:
         initial = super().initial_state()
@@ -190,7 +195,7 @@ class PublicHoldemGame(HoldemGame):
         if type(state.history) is not tuple:
             raise ValueError("Public action history must be immutable")
         paid = list(self._opening_contributions)
-        street_bets = list(self._opening_contributions)
+        street_bets = list(self._opening_street_bets)
         previous_street = 0
         for action in state.history:
             if (

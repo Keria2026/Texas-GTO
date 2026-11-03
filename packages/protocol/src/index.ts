@@ -11,12 +11,14 @@ export const GameConfigSchema = z.strictObject({
   small_blind: z.number().int().positive(),
   big_blind: z.number().int().positive(),
   straddle: z.number().int().positive().nullable().optional(),
+  ante: z.number().int().nonnegative().optional(),
   button: z.number().int().min(0).max(7),
   abstraction: z.enum(["none", "suit_canonical", "mushroom_context", "mushroom_population"]),
   session_hands: z.number().int().min(1).max(4).nullable().optional(),
 }).superRefine((value, context) => {
   if (value.game_id === "mushroom") {
     if (value.num_players < 4 || value.small_blind !== 2 || value.big_blind !== 4 || value.straddle !== 8
+      || ![0, 4].includes(value.ante ?? 0)
       || !["none", "mushroom_context", "mushroom_population"].includes(value.abstraction) || value.button >= value.num_players
       || (value.abstraction === "mushroom_population" && (value.num_players !== 8 || value.stack !== 800
         || value.stacks != null || value.button !== 0))
@@ -32,11 +34,12 @@ export const GameConfigSchema = z.strictObject({
     || (value.game_id === "kuhn" && value.num_players > 6)
     || (value.game_id === "leduc" && value.num_players !== 2)
     || value.session_hands != null
+    || (value.game_id !== "holdem" && !!value.ante)
     || (value.game_id !== "holdem" && (value.abstraction !== "none" || value.stacks != null || value.straddle != null))
     || (value.stacks != null && value.stacks.length !== value.num_players)
     || (value.stacks != null && value.stacks.some(stack => stack <= 0))
     || (value.straddle != null && (value.num_players < 4 || value.straddle <= value.big_blind
-      || value.straddle > (value.stacks?.[(value.button + 3) % value.num_players] ?? value.stack)));
+      || value.straddle + (value.ante ?? 0) > (value.stacks?.[(value.button + 3) % value.num_players] ?? value.stack)));
   if (invalid) context.addIssue({ code: "custom", message: "Incompatible game, seats, stacks or forced bets" });
 });
 
@@ -94,6 +97,7 @@ export const CoreTrainingResponseSchema = z.strictObject({
   game: GameConfigSchema,
   algorithm: z.literal("pluribus"),
   objective: z.literal("expected_net_points"),
+  rule_iterations: z.number().int().nonnegative().optional(),
   iterations: z.number().int().nonnegative(),
   information_sets: z.number().int().nonnegative(),
   averaged_information_sets: z.number().int().nonnegative(),

@@ -72,6 +72,7 @@ def prepare_query(state, prefix, *, ledger_resolver=None):
             button=button,
             horizon=2,
             outstanding=opening_rights,
+            ante=replay.game.ante,
         )
     )
     query = build_public_query(

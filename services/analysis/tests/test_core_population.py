@@ -25,20 +25,29 @@ def test_worker_upgrades_one_core_once_and_restores_frozen_manifest(tmp_path):
     new = _open_core_trainer(tmp_path)
     try:
         assert isinstance(new.game, MushroomPopulationGame)
-        assert new.game.warm_start["source_iterations"] == 0
-        assert new._store._document["metadata"] == before["metadata"]
+        previous = MushroomPopulationGame.from_context(new.game.rule_migration["source_context"])
+        assert previous.warm_start["source_iterations"] == 0
+        assert new.game.ante == 4
+        assert new._store._document["metadata"] == {
+            **before["metadata"],
+            "rules_version": new.game.rules_version,
+        }
         assert new._store._document["rng_state"] == before["rng_state"]
         context = new.game.checkpoint_context
     finally:
         new._store.close()
     backups = list(tmp_path.glob("before-population-*.sqlite3"))
     assert len(backups) == 1 and header(backups[0]) == before
+    ante_backups = list(tmp_path.glob("before-ante-*.sqlite3"))
+    assert len(ante_backups) == 1
+    assert header(ante_backups[0])["metadata"] == before["metadata"]
     resumed = _open_core_trainer(tmp_path)
     try:
         assert resumed.game.checkpoint_context == context
     finally:
         resumed._store.close()
     assert list(tmp_path.glob("before-population-*.sqlite3")) == backups
+    assert list(tmp_path.glob("before-ante-*.sqlite3")) == ante_backups
 
 
 @pytest.mark.parametrize("population", [False, True])
@@ -51,7 +60,9 @@ def test_json_import_preserves_original_artifact_and_distribution(tmp_path, popu
     try:
         assert isinstance(trainer.game, MushroomPopulationGame)
         assert (
-            trainer.game.warm_start is None if population else trainer.game.warm_start is not None
+            trainer.game.rule_migration is None
+            if population
+            else trainer.game.rule_migration is not None
         )
         assert trainer.seed == 17
         assert trainer.iterations == 0

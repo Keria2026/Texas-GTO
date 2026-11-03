@@ -369,13 +369,15 @@ class TrainingStore(Mapping[InformationSet, _TableEntry]):
             raise ValueError("Invalid training average count")
         return (player, key), entry, stage
 
-    def _rows(self, columns: str) -> Iterator[tuple]:
+    def _rows(self, columns: str, *, key_prefix: str = "") -> Iterator[tuple]:
         ceiling = self._db.execute("SELECT COALESCE(MAX(id),0) FROM training_entries").fetchone()[0]
         after = 0
         while True:
             rows = self._db.execute(
-                f"SELECT {columns} FROM training_entries WHERE id>? AND id<=? ORDER BY id LIMIT ?",
-                (after, ceiling, _PAGE_SIZE),
+                f"SELECT {columns} FROM training_entries WHERE id>? AND id<=? "
+                + ("AND substr(information_key,1,length(?))=? " if key_prefix else "")
+                + "ORDER BY id LIMIT ?",
+                (after, ceiling, *((key_prefix, key_prefix) if key_prefix else ()), _PAGE_SIZE),
             ).fetchall()
             if not rows:
                 return
@@ -405,9 +407,9 @@ class TrainingStore(Mapping[InformationSet, _TableEntry]):
         for _key, entry, _stage in self.scan():
             yield entry
 
-    def scan(self) -> Iterator[tuple[InformationSet, _TableEntry, int]]:
+    def scan(self, *, key_prefix: str = "") -> Iterator[tuple[InformationSet, _TableEntry, int]]:
         """Stream original row IDs once; updates keep IDs, later inserts are excluded."""
-        for row in self._rows(_COLUMNS):
+        for row in self._rows(_COLUMNS, key_prefix=key_prefix):
             yield self._decode(row)
 
     def counts(self) -> tuple[int, int]:
@@ -651,6 +653,60 @@ class TrainingStore(Mapping[InformationSet, _TableEntry]):
                 "training_context": self._document["training_context"],
             } != self._document:
                 raise ValueError("Population training cannot change model metadata or RNG")
+            self._db.execute(
+                "UPDATE training_meta SET document=? WHERE singleton=1",
+                (_canonical(document).decode(),),
+            )
+            self._counted_changes += 1
+            self._check_counted_changes()
+            self._db.execute("COMMIT")
+            self._rollback_counts = None
+        except BaseException:
+            trainer.game = self.game = previous
+            self.rollback()
+            raise
+        self._document = document
+        self._metadata = document["metadata"]
+
+    def enable_ante_training(self, trainer: Trainer, population_game: Any) -> None:
+        """Keep legacy rows/RNG, but isolate new ante keys and record their start iteration.
+
+        Back up the committed database first. Old rows remain portable history;
+        their presence is not coverage or feedback for the new rules.
+        """
+        from texas_strategy.mushroom_population import MushroomPopulationGame
+
+        if getattr(trainer, "_store", None) is not self or trainer.game is not self.game:
+            raise ValueError("Trainer does not own this training store and game")
+        if not isinstance(population_game, MushroomPopulationGame):
+            raise ValueError("Expected a validated mushroom population game")
+        previous = trainer.game
+        population_game.validate_rule_migration(previous, source_iterations=trainer.iterations)
+        if _document(trainer, trainer.iterations) != self._document:
+            raise ValueError("Trainer differs from the committed migration source")
+        self.begin(trainer.iterations)
+        try:
+            if any(
+                self._db.execute(
+                    "SELECT 1 FROM training_entries WHERE player=? AND information_key>=? "
+                    "AND information_key<? LIMIT 1",
+                    (player, "ante4:", "ante4;"),
+                ).fetchone()
+                for player in range(population_game.num_players)
+            ):
+                raise ValueError("Legacy store already contains the new ante namespace")
+            trainer.game = self.game = population_game
+            document = _document(trainer, trainer.iterations)
+            expected = {
+                **self._document,
+                "training_context": population_game.checkpoint_context,
+                "metadata": {
+                    **self._document["metadata"],
+                    "rules_version": population_game.rules_version,
+                },
+            }
+            if document != expected:
+                raise ValueError("Ante migration cannot change accumulated iterations or RNG")
             self._db.execute(
                 "UPDATE training_meta SET document=? WHERE singleton=1",
                 (_canonical(document).decode(),),

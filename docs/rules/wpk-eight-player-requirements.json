@@ -3,7 +3,7 @@
     "kind": "requirements_profile",
     "profile_id": "wpk-8p-2-4-straddle8-ante4-mushroom20-draft5",
     "source": "user_report_and_live_business_events",
-    "implementation_status": "not_supported_by_current_runtime",
+    "implementation_status": "ante4_supported_restraddle_and_full_runtime_acceptance_pending",
     "target_players": 8,
     "small_blind_points": 2,
     "big_blind_points": 4,

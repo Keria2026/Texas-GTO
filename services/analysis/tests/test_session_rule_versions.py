@@ -9,14 +9,18 @@ from texas_analysis.storage import ConflictError, SessionStore
 
 
 @pytest.mark.parametrize(
-    "abstraction,prefix",
-    [("none", "mushroom-session-horizon-v2:"), ("mushroom_context", "mushroom-context-v1:")],
+    "abstraction,ante,prefix",
+    [
+        ("none", 0, "mushroom-session-horizon-v2:"),
+        ("none", 4, "mushroom-session-horizon-v3:"),
+        ("mushroom_context", 4, "mushroom-context-v1:"),
+    ],
 )
 def test_saved_session_cannot_reinterpret_its_history_after_a_rule_change(
-    tmp_path, abstraction, prefix
+    tmp_path, abstraction, ante, prefix
 ):
     store = SessionStore(tmp_path / "sessions.sqlite3")
-    config = CORE_GAME.model_copy(update={"abstraction": abstraction})
+    config = CORE_GAME.model_copy(update={"abstraction": abstraction, "ante": ante})
     created = store.create(CreateSession(game=config, seed=42))
     assert created.rules_version.startswith(prefix)
     with store.connection() as db:

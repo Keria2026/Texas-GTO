@@ -235,9 +235,10 @@ export function App() {
             <p>当前模型：{core.game.abstraction === "mushroom_population"
               ? "8 个模型席位 · 4–8 人开局 · 不同筹码与蘑菇权益"
               : `${core.game.num_players} 人 · 每席初始 ${core.game.stack} 分`} · Pluribus MCCFR</p>
-            {core.game.abstraction === "mushroom_population" && <p className="note">累计轮数包含旧模型的热启动进度，各类开局的策略覆盖仍需单独核验。</p>}
+            {core.game.abstraction === "mushroom_population" && <p className="note">累计轮数和信息集包含保留的旧规则数据；当前规则迭代另列，策略覆盖仍需单独核验。</p>}
             <dl className="experiment-metrics">
               <div><dt>已保存迭代</dt><dd>{core.iterations.toLocaleString("zh-CN")}</dd></div>
+              {core.rule_iterations != null && <div><dt>当前规则迭代（前注 {core.game.ante ?? 0} 分）</dt><dd>{core.rule_iterations.toLocaleString("zh-CN")}</dd></div>}
               <div><dt>累计训练信息集</dt><dd>{core.information_sets.toLocaleString("zh-CN")}</dd></div>
               <div><dt>已积累平均策略的信息集</dt><dd>{core.averaged_information_sets.toLocaleString("zh-CN")}</dd></div>
               <div><dt>保存的训练进度</dt><dd>{core.checkpoint_bytes ? `${(core.checkpoint_bytes / 1048576).toFixed(1)} MiB` : "等待首次保存"}</dd></div>

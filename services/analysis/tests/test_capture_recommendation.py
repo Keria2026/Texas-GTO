@@ -17,7 +17,7 @@ from texas_strategy.training_store import open_trainer
 ORIGIN = "chrome-extension://" + "a" * 32
 
 
-def eight_player_events(*, button=0, now=None):
+def eight_player_events(*, button=0, now=None, ante=0):
     now = now or datetime.now(UTC).isoformat()
     hero = (button + 4) % 8
     players = ["hero" if p == hero else f"player-{p + 1}" for p in range(8)]
@@ -78,6 +78,20 @@ def eight_player_events(*, button=0, now=None):
                 "source_round": "CLEAN",
             },
         )
+    if ante:
+        for p in players:
+            action_id += 1
+            add(
+                "action_confirmed",
+                {
+                    "source_event_id": str(action_id),
+                    "player_id": p,
+                    "action": "ANTE",
+                    "amount_delta": ante,
+                    "amount_to": None,
+                    "source_round": "CLEAN",
+                },
+            )
     for step, (action, amount) in enumerate(
         zip(("SMALL_BLIND", "BIG_BLIND", "THIRD_BLIND"), (2, 4, 8), strict=True), 1
     ):
@@ -102,7 +116,7 @@ def eight_player_events(*, button=0, now=None):
             "hero_cards": ["As", "Kd"],
             "board": [],
             "players": [
-                {"player_id": p, "seat": i + 1, "stack": 800 - fees[i] - forced[i]}
+                {"player_id": p, "seat": i + 1, "stack": 800 - fees[i] - ante - forced[i]}
                 for i, p in enumerate(players)
             ],
             "turn": {
@@ -183,12 +197,13 @@ def test_average_only_initialization_is_not_recommended(tmp_path, search):
     assert result["actions"] == [] and result["selected_action"] is None
 
 
-def test_eight_seat_rotation_keeps_query_and_actual_amounts(tmp_path):
-    events = eight_player_events()
+@pytest.mark.parametrize("ante", [0, 4])
+def test_eight_seat_rotation_keeps_query_and_actual_amounts(tmp_path, ante):
+    events = eight_player_events(ante=ante)
     path = tmp_path / "training.sqlite3"
     original = fixture_model(path, events)
     for button in range(8):
-        events = eight_player_events(button=button)
+        events = eight_player_events(button=button, ante=ante)
         query = prepare_query(observation(events), events)[2]
         assert (query.player, query.information_key) == (original.player, original.information_key)
         result = call(events, path)
@@ -198,7 +213,10 @@ def test_eight_seat_rotation_keeps_query_and_actual_amounts(tmp_path):
         assert sum(a["probability"] for a in result["actions"]) == pytest.approx(1)
         assert next(a for a in result["actions"] if a["action"] == "CALL")["amount_delta"] == 8
         assert next(a for a in result["actions"] if a["label"] == "raise_min")["raise_to"] == 16
-        assert next(a for a in result["actions"] if a["label"] == "all_in")["amount_delta"] == 780
+        assert (
+            next(a for a in result["actions"] if a["label"] == "all_in")["amount_delta"]
+            == 780 - ante
+        )
         assert result["selected_action"] == call(events, path)["selected_action"]
 
 

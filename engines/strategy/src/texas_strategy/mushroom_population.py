@@ -17,6 +17,7 @@ from .blueprint import _canonical, _nonfinite, _object
 from .mushroom_abstraction import MushroomContextGame, MushroomContextState
 
 VERSION = "mushroom-population-v1"
+ANTE_VERSION = "mushroom-population-ante-v2"
 MAX_ROOTS = 1024
 SAFE = (1 << 53) - 1
 
@@ -75,7 +76,18 @@ class MushroomPopulationGame:
     supports_exact_enumeration = False
     abstraction_version = VERSION
 
-    def __init__(self, roots, *, horizon=2, warm_start=None):
+    def __init__(self, roots, *, horizon=2, warm_start=None, ante=0, rule_migration=None):
+        if type(ante) is not int or ante not in (0, 4):
+            raise ValueError("Population ante must be zero or four")
+        if rule_migration is not None and (
+            ante != 4
+            or warm_start is not None
+            or not isinstance(rule_migration, dict)
+            or set(rule_migration) != {"source_context", "source_iterations"}
+            or type(rule_migration["source_iterations"]) is not int
+            or rule_migration["source_iterations"] < 0
+        ):
+            raise ValueError("Invalid ante rule migration provenance")
         if type(horizon) is not int or not 1 <= horizon <= 4:
             raise ValueError("Population horizon must be between one and four hands")
         if not isinstance(roots, (tuple, list)) or not 1 <= len(roots) <= MAX_ROOTS:
@@ -98,12 +110,16 @@ class MushroomPopulationGame:
             ):
                 raise ValueError("Invalid population warm-start provenance")
         self.horizon = horizon
+        self.ante = ante
+        self.training_key_prefix = f"ante{ante}:" if ante else ""
+        self.abstraction_version = ANTE_VERSION if ante else VERSION
         self.checkpoint_context = _canonical(
             {
-                "version": VERSION,
+                "version": self.abstraction_version,
                 "horizon": horizon,
                 "roots": self._roots,
                 "warm_start": warm_start,
+                **({"ante": ante, "rule_migration": rule_migration} if ante else {}),
             }
         ).decode()
         self._identity = sha256(self.checkpoint_context.encode()).hexdigest()
@@ -132,6 +148,11 @@ class MushroomPopulationGame:
                 for i in range(len(self._roots))
             ):
                 raise ValueError("Warm-start opening is absent from the population")
+        if rule_migration is not None:
+            previous = type(self).from_context(rule_migration["source_context"])
+            if previous.ante or previous.roots != self.roots or previous.horizon != horizon:
+                raise ValueError("Ante migration must retain the old opening distribution")
+            previous.validate_checkpoint_iterations(rule_migration["source_iterations"])
 
     @property
     def roots(self):
@@ -141,8 +162,12 @@ class MushroomPopulationGame:
     def warm_start(self):
         return json.loads(self.checkpoint_context)["warm_start"]
 
+    @property
+    def rule_migration(self):
+        return json.loads(self.checkpoint_context).get("rule_migration")
+
     @classmethod
-    def default(cls, *, horizon=2):
+    def default(cls, *, horizon=2, ante=0):
         # Exact legacy opening first; half the root mass remains eight-player training.
         masks = [255] + [m for m in range(256) if 4 <= m.bit_count() < 8]
         seat_weights = {4: 4, 5: 5, 6: 10, 7: 35, 8: 1120}
@@ -166,7 +191,7 @@ class MushroomPopulationGame:
                         "button": 0,
                     }
                 )
-        return cls(roots, horizon=horizon)
+        return cls(roots, horizon=horizon, ante=ante)
 
     @classmethod
     def from_context(cls, context):
@@ -178,20 +203,64 @@ class MushroomPopulationGame:
             raise ValueError("Invalid population context") from exc
         if (
             not isinstance(value, dict)
-            or set(value) != {"version", "horizon", "roots", "warm_start"}
-            or value["version"] != VERSION
+            or (value.get("version"), frozenset(value))
+            not in (
+                (VERSION, frozenset({"version", "horizon", "roots", "warm_start"})),
+                (
+                    ANTE_VERSION,
+                    frozenset(
+                        {"version", "horizon", "roots", "warm_start", "ante", "rule_migration"}
+                    ),
+                ),
+            )
+            or (value["version"] == ANTE_VERSION and value["ante"] != 4)
             or _canonical(value).decode() != context
         ):
             raise ValueError("Unsupported or noncanonical population context")
-        return cls(value["roots"], horizon=value["horizon"], warm_start=value["warm_start"])
+        return cls(
+            value["roots"],
+            horizon=value["horizon"],
+            warm_start=value["warm_start"],
+            ante=value.get("ante", 0),
+            rule_migration=value.get("rule_migration"),
+        )
+
+    def with_ante(self, *, source_iterations):
+        if self.ante:
+            raise ValueError("Population already uses ante rules")
+        return type(self)(
+            self.roots,
+            horizon=self.horizon,
+            ante=4,
+            rule_migration={
+                "source_context": self.checkpoint_context,
+                "source_iterations": source_iterations,
+            },
+        )
+
+    def validate_rule_migration(self, previous, *, source_iterations):
+        if (
+            type(previous) is not MushroomPopulationGame
+            or previous.ante != 0
+            or self.ante != 4
+            or self.horizon != previous.horizon
+            or self.roots != previous.roots
+            or self.rule_migration
+            != {
+                "source_context": previous.checkpoint_context,
+                "source_iterations": source_iterations,
+            }
+            or sha256(self.checkpoint_context.encode()).hexdigest() != self._identity
+        ):
+            raise ValueError("Ante migration does not match the committed source")
 
     @classmethod
     def from_legacy(cls, previous_game, *, source_iterations):
         if type(previous_game) is not MushroomContextGame or previous_game.num_players != 8:
             raise ValueError("Population warm start requires an eight-seat context game")
-        return cls.default(horizon=previous_game.base_game.horizon).with_warm_start(
-            previous_game, source_iterations=source_iterations
-        )
+        return cls.default(
+            horizon=previous_game.base_game.horizon, ante=previous_game.base_game.ante
+        ).with_warm_start(previous_game, source_iterations=source_iterations)
 
     def with_warm_start(self, previous_game, *, source_iterations):
         if type(previous_game) is not MushroomContextGame:
@@ -201,6 +270,7 @@ class MushroomPopulationGame:
         game = type(self)(
             self.roots,
             horizon=self.horizon,
+            ante=self.ante,
             warm_start={
                 "previous_context": previous_game.checkpoint_context,
                 "source_iterations": source_iterations,
@@ -236,6 +306,10 @@ class MushroomPopulationGame:
             or type(iterations) is not int
             or iterations < 0
             or (self.warm_start is not None and iterations < self.warm_start["source_iterations"])
+            or (
+                self.rule_migration is not None
+                and iterations < self.rule_migration["source_iterations"]
+            )
         ):
             raise ValueError("Checkpoint iterations precede the declared population warm start")
 
@@ -249,6 +323,7 @@ class MushroomPopulationGame:
                     horizon=self.horizon,
                     outstanding=root["outstanding"],
                     waiting_for_top_up=root["waiting_for_top_up"],
+                    ante=self.ante,
                 )
             )
             if len(self._games) > 8:

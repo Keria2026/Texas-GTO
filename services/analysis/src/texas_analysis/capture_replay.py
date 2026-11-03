@@ -73,7 +73,8 @@ def _actions(events):
 
 
 def _opening(events, actions):
-    fees, blinds, seen = {}, {}, set()
+    fees, antes, blinds, blind_amounts, seen = {}, {}, {}, {}, set()
+    undealt_views = []
     for index, event in enumerate(events):
         if event.kind == "action_confirmed":
             data = actions[event.data["source_event_id"]]
@@ -82,18 +83,32 @@ def _opening(events, actions):
             seen.add(data["source_event_id"])
             action, player = data["action"], data["player_id"]
             if action == "PAY_MUSHROOM":
-                _require(not blinds and player not in fees, "invalid_fee_order")
+                _require(not antes and not blinds and player not in fees, "invalid_fee_order")
                 _require(data["amount_delta"] in (20, 40), "unsupported_mushroom_fee")
                 fees[player] = data["amount_delta"]
             elif action == "ANTE":
-                raise ReplayUnavailable("ante_not_supported")
+                _require(
+                    not blinds and player in fees and player not in antes, "invalid_ante_order"
+                )
+                _require(0 < data["amount_delta"] <= 4, "unsupported_ante")
+                _require(
+                    data["amount_to"] in (None, data["amount_delta"]), "conflicting_ante_total"
+                )
+                antes[player] = data["amount_delta"]
             elif action in FORCED:
                 _require(player in fees and action not in blinds, "unsupported_forced_bets")
-                _require(data["amount_delta"] == FORCED[action], "unsupported_forced_bets")
-                _require(data["amount_to"] in (None, FORCED[action]), "conflicting_forced_total")
-                _require(tuple(blinds) == tuple(FORCED)[: len(blinds)], "invalid_blind_order")
-                _require(action == tuple(FORCED)[len(blinds)], "invalid_blind_order")
+                _require(not antes or set(antes) == set(fees), "incomplete_antes")
+                _require(0 <= data["amount_delta"] <= FORCED[action], "unsupported_forced_bets")
+                _require(
+                    data["amount_to"] in (None, data["amount_delta"]), "conflicting_forced_total"
+                )
+                _require(
+                    not blinds
+                    or tuple(FORCED).index(action) > tuple(FORCED).index(next(reversed(blinds))),
+                    "invalid_blind_order",
+                )
                 blinds[action] = player
+                blind_amounts[action] = data["amount_delta"]
             else:
                 raise ReplayUnavailable("missing_opening_snapshot")
         elif event.kind == "snapshot":
@@ -101,45 +116,94 @@ def _opening(events, actions):
             # WP_dealNotify can still expose CLEAN; wait for its preflop snapshot.
             if not data["board"] and data["street"] in ("unknown", "between_hands"):
                 continue
-            _require(
-                4 <= len(fees) <= 8 and set(blinds) == set(FORCED), "incomplete_opening_debits"
-            )
+            _require(4 <= len(fees) <= 8 and "THIRD_BLIND" in blinds, "incomplete_opening_debits")
             _require(
                 not data["board"] and data["street"] == "preflop",
                 "late_opening_snapshot",
             )
             _require(data["history_complete"], "incomplete_observed_history")
+            # WPK can publish the street/actor before applying blind debits and dealing.
+            # Keep those views for validation; never anchor cash before hero's deal is visible.
+            if antes and None in data["hero_cards"]:
+                undealt_views.append(data)
+                continue
             people = {p["player_id"]: p for p in data["players"]}
             _require(set(fees) <= set(people), "missing_opening_players")
             players = tuple(sorted(fees, key=lambda p: people[p]["seat"]))
             _require(all(people[p]["stack"] is not None for p in players), "missing_opening_stacks")
-            sb = players.index(blinds["SMALL_BLIND"])
-            _require(len(set(blinds.values())) == 3, "conflicting_blind_players")
+            small_blinds = [p for p, fee in fees.items() if fee == 40]
+            _require(len(small_blinds) == 1, "fee_owner_conflicts_with_small_blind")
+            sb = players.index(small_blinds[0])
+            _require(len(set(blinds.values())) == len(blinds), "conflicting_blind_players")
             _require(
-                blinds["BIG_BLIND"] == players[(sb + 1) % len(players)]
-                and blinds["THIRD_BLIND"] == players[(sb + 2) % len(players)],
+                blinds.get("SMALL_BLIND", players[sb]) == players[sb],
+                "fee_owner_conflicts_with_small_blind",
+            )
+            expected = dict(
+                zip(FORCED, (players[(sb + i) % len(players)] for i in range(3)), strict=True)
+            )
+            _require(
+                all(player == expected[action] for action, player in blinds.items()),
                 "blind_order_conflicts_with_seats",
             )
             _require(
                 all(fee == (40 if p == players[sb] else 20) for p, fee in fees.items()),
                 "fee_owner_conflicts_with_small_blind",
             )
-            forced = {blinds[action]: amount for action, amount in FORCED.items()}
-            after_fees = tuple(people[p]["stack"] + forced.get(p, 0) for p in players)
+            _require(not antes or set(antes) == set(fees), "incomplete_antes")
+            ante = 4 if antes else 0
+            forced = {blinds[action]: amount for action, amount in blind_amounts.items()}
+            after_fees = tuple(
+                people[p]["stack"] + forced.get(p, 0) + antes.get(p, 0) for p in players
+            )
+            _require(
+                all(antes.get(p, 0) == min(ante, after_fees[i]) for i, p in enumerate(players)),
+                "conflicting_ante_amount",
+            )
+            available = dict(zip(players, (n - min(ante, n) for n in after_fees), strict=True))
+            _require(available[expected["THIRD_BLIND"]] >= 8, "unsupported_forced_bets")
+            _require(
+                all(
+                    blind_amounts.get(action, 0) == min(amount, available[expected[action]])
+                    for action, amount in FORCED.items()
+                ),
+                "incomplete_opening_debits",
+            )
             game = PublicHoldemGame(
                 HoldemRules(
                     after_fees,
                     small_blind=2,
                     big_blind=4,
                     straddle=8,
+                    ante=ante,
                     button=(sb - 1) % len(players),
                 )
             )
+            opening = game.initial_state()
+            seats = tuple(people[p]["seat"] for p in players)
+            previous_cash = None
+            for view in undealt_views:
+                _snapshot(
+                    game,
+                    opening,
+                    view,
+                    players,
+                    seats,
+                    opening_debits=tuple(forced.get(p, 0) for p in players),
+                )
+                visible = {p["player_id"]: p["stack"] for p in view["players"]}
+                cash = tuple(visible[p] for p in players)
+                _require(
+                    previous_cash is None
+                    or all(a >= b for a, b in zip(previous_cash, cash, strict=True)),
+                    "snapshot_cash_conflict",
+                )
+                previous_cash = cash
             return (
                 index,
                 game,
                 players,
-                tuple(people[p]["seat"] for p in players),
+                seats,
                 tuple(after_fees[i] + fees[p] for i, p in enumerate(players)),
                 seen,
             )
@@ -148,7 +212,7 @@ def _opening(events, actions):
     raise ReplayUnavailable("missing_opening_snapshot")
 
 
-def _snapshot(game, state, data, players, seats):
+def _snapshot(game, state, data, players, seats, *, opening_debits=None):
     _require(data["history_complete"], "incomplete_observed_history")
     people = {p["player_id"]: p for p in data["players"]}
     _require(set(players) <= set(people), "participant_disappeared")
@@ -170,6 +234,13 @@ def _snapshot(game, state, data, players, seats):
     pending_returns = tuple(state.stacks[i] - people[p]["stack"] for i, p in enumerate(players))
     _require(
         not any(pending_returns)
+        or (
+            opening_debits is not None
+            and all(
+                -delta in (0, blind)
+                for delta, blind in zip(pending_returns, opening_debits, strict=True)
+            )
+        )
         or (
             game.actor(state) == -1
             and sum(

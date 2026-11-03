@@ -201,6 +201,8 @@ class Trainer:
         for key, entry in self._table.items():
             if check is not None:
                 check()
+            if not key[1].startswith(getattr(self.game, "training_key_prefix", "")):
+                continue
             maximum = max(entry.strategy_sum)
             if maximum > 0:
                 scaled = [value / maximum for value in entry.strategy_sum]
@@ -227,6 +229,8 @@ class Trainer:
         for key, entry in self._table.items():
             if check is not None:
                 check()
+            if not key[1].startswith(getattr(self.game, "training_key_prefix", "")):
+                continue
             entries[key] = self._fixed_entries.get(key) or PolicyEntry(
                 entry.actions, regret_matching(entry.regrets)
             )
