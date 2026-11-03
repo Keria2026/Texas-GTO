@@ -19,6 +19,24 @@ function ready(source = 'synthetic-eight', through = '1'): any {
       horizon_hands: 2, opponent_adaptation: false }, warnings: ['two_hand_horizon'],
   };
 }
+test('Pr1.0 adaptation requires version, independent comparison and bounded mixture', () => {
+  const value = ready();
+  value.reason = 'searched_strategy'; value.model.source = 'profile_search'; value.model.opponent_adaptation = true;
+  value.model.search = { status: 'complete', iterations: 2, nodes: 200, rollout_nodes: 400,
+    root_draws: 16, elapsed_ms: 900, stop_reason: 'deadline' };
+  value.pr = { release: 'Pr1.0', search_root: 'street_start', target_depth: 4, opponent_version: 'b'.repeat(64),
+    adaptation_weight: 0.25, evaluation: { accepted: true, samples: 32, effective_samples: 30,
+      delta_points: 3, standard_error: 1, lower_bound: 1.04 } };
+  assert.equal(parseRecommendation(value).model?.source, 'profile_search');
+  for (const mutate of [
+    (m: any) => { delete m.pr; },
+    (m: any) => { m.pr.evaluation.accepted = false; },
+    (m: any) => { m.pr.opponent_version = null; },
+    (m: any) => { m.pr.adaptation_weight = 1; },
+    (m: any) => { m.pr.evaluation.lower_bound = 6; },
+    (m: any) => { m.pr.evaluation.effective_samples = 2; },
+  ]) { const bad = structuredClone(value); mutate(bad); assert.throws(() => parseRecommendation(bad)); }
+});
 test('recommendation rejects malformed amounts, frequencies, provenance and unavailable actions', () => {
   assert.equal(parseRecommendation(ready()).actions.length, 3);
   for (const change of [

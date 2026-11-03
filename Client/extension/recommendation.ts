@@ -4,9 +4,12 @@ import type { CaptureState } from './capture-state.ts';
 
 export const RECOMMENDATIONS_CAPABILITY = 'capture_recommendations_v1';
 export const SEARCH_CAPABILITY = 'capture_search_v1';
+export const PR_CAPABILITY = 'capture_pr_v1';
 export type SearchDiagnostics = { status: 'complete'; iterations: number; nodes: number;
   rollout_nodes: number; root_draws: number; elapsed_ms: number; stop_reason: 'iterations' | 'node_budget' | 'deadline' }
-  | { status: 'coverage_missing' | 'budget'; elapsed_ms: number };
+  | { status: 'coverage_missing' | 'budget' | 'profile_rejected'; elapsed_ms: number };
+export interface ProfileEvaluation { accepted: boolean; samples: number; effective_samples: number;
+  delta_points: number; standard_error: number; lower_bound: number; }
 export interface RecommendedAction {
   action: 'FOLD' | 'CHECK' | 'CALL' | 'BET' | 'RAISE' | 'ALL_IN';
   label: string; amount_delta: number; raise_to: number | null; probability: number;
@@ -16,10 +19,12 @@ export interface Recommendation {
   source_id: string; through_sequence: string; hand_id: string | null;
   status: 'ready' | 'unavailable'; reason: string; actions: RecommendedAction[];
   selected_action: number | null; issued_at_ms: number; expires_at_ms: number; elapsed_ms: number;
-  model: null | { source: 'pluribus_blueprint' | 'pluribus_search'; version: string; iterations: number;
-    rules_version: string; quality: 'finite_horizon_unvalidated'; horizon_hands: 2; opponent_adaptation: false;
+  model: null | { source: 'pluribus_blueprint' | 'pluribus_search' | 'profile_search'; version: string; iterations: number;
+    rules_version: string; quality: 'finite_horizon_unvalidated'; horizon_hands: 2; opponent_adaptation: boolean;
     search?: SearchDiagnostics };
   warnings: string[];
+  pr?: { release: 'Pr1.0'; search_root: 'street_start'; target_depth: number | null;
+    opponent_version: string | null; adaptation_weight: number; evaluation: ProfileEvaluation | null };
 }
 function fields(value: any, keys: string[]): asserts value is Record<string, any> {
   if (!value || typeof value !== 'object' || Array.isArray(value)
@@ -29,7 +34,28 @@ function integer(value: unknown): value is number { return Number.isSafeInteger(
 export function parseRecommendation(input: unknown): Recommendation {
   const m = input as Recommendation;
   fields(m, ['schema', 'type', 'source_id', 'through_sequence', 'hand_id', 'status', 'reason', 'actions',
-    'selected_action', 'model', 'issued_at_ms', 'expires_at_ms', 'elapsed_ms', 'warnings']);
+    'selected_action', 'model', 'issued_at_ms', 'expires_at_ms', 'elapsed_ms', 'warnings',
+    ...(m && 'pr' in m ? ['pr'] : [])]);
+  if (m.pr !== undefined) {
+    const p = m.pr;
+    fields(p, ['release', 'search_root', 'target_depth', 'opponent_version', 'adaptation_weight', 'evaluation']);
+    if (p.release !== 'Pr1.0' || p.search_root !== 'street_start'
+      || (p.target_depth !== null && (!integer(p.target_depth) || p.target_depth > 4096))
+      || (p.opponent_version !== null && (typeof p.opponent_version !== 'string' || !/^[a-f0-9]{64}$/.test(p.opponent_version)))
+      || ![0, 0.25].includes(p.adaptation_weight)) throw Error('Invalid Pr1.0 provenance');
+    if (p.evaluation !== null) {
+      const e = p.evaluation;
+      fields(e, ['accepted', 'samples', 'effective_samples', 'delta_points', 'standard_error', 'lower_bound']);
+      if (typeof e.accepted !== 'boolean' || !integer(e.samples) || e.samples > 32
+        || ![e.effective_samples, e.delta_points, e.standard_error, e.lower_bound].every(Number.isFinite)
+        || e.effective_samples < 0 || e.effective_samples > e.samples + 1e-9 || e.standard_error < 0
+        || e.accepted !== (e.effective_samples >= 16 && e.lower_bound > 0)
+        || Math.abs(e.lower_bound - (e.delta_points - 1.96 * e.standard_error)) > 1e-6)
+        throw Error('Invalid profile comparison');
+    }
+    if (p.adaptation_weight > 0 && (!p.opponent_version || !p.evaluation?.accepted || m.status !== 'ready'
+      || m.model?.source !== 'profile_search')) throw Error('Unvalidated profile mixture');
+  }
   if (m.schema !== 'tgto.capture-recommendation/0.1' || m.type !== 'capture.recommendation'
     || typeof m.source_id !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(m.source_id)
     || !['ready', 'unavailable'].includes(m.status)
@@ -53,24 +79,26 @@ export function parseRecommendation(input: unknown): Recommendation {
     const model = m.model;
     fields(model, ['source', 'version', 'iterations', 'rules_version', 'quality', 'horizon_hands', 'opponent_adaptation',
       ...(model && 'search' in model ? ['search'] : [])]);
-    if (!['pluribus_blueprint', 'pluribus_search'].includes(model.source) || typeof model.version !== 'string' || !/^[a-f0-9]{64}$/.test(model.version)
+    if (!['pluribus_blueprint', 'pluribus_search', ...(m.pr ? ['profile_search'] : [])].includes(model.source) || typeof model.version !== 'string' || !/^[a-f0-9]{64}$/.test(model.version)
       || !integer(model.iterations) || model.iterations < 1 || typeof model.rules_version !== 'string'
       || !model.rules_version.startsWith('mushroom-context-v1:') || model.rules_version.length > 8192
-      || model.quality !== 'finite_horizon_unvalidated' || model.horizon_hands !== 2 || model.opponent_adaptation !== false)
+      || model.quality !== 'finite_horizon_unvalidated' || model.horizon_hands !== 2
+      || model.opponent_adaptation !== (model.source === 'profile_search')
+      || (model.opponent_adaptation && m.pr?.adaptation_weight !== 0.25))
       throw Error('Invalid recommendation provenance');
-    if (m.reason !== (model.source === 'pluribus_search' ? 'searched_strategy' : 'covered_blueprint'))
+    if (m.reason !== (model.source !== 'pluribus_blueprint' ? 'searched_strategy' : 'covered_blueprint'))
       throw Error('Invalid recommendation source');
     if (model.search !== undefined) {
       const s = model.search;
       fields(s, ['status', 'elapsed_ms', ...(s?.status === 'complete' ? ['iterations', 'nodes', 'rollout_nodes', 'root_draws', 'stop_reason'] : [])]);
-      if (!['complete', 'coverage_missing', 'budget'].includes(s.status) || !integer(s.elapsed_ms))
+      if (!['complete', 'coverage_missing', 'budget', ...(m.pr ? ['profile_rejected'] : [])].includes(s.status) || !integer(s.elapsed_ms))
         throw Error('Invalid search diagnostics');
       if (s.status === 'complete' && (![s.iterations, s.nodes, s.rollout_nodes, s.root_draws].every(integer)
         || s.iterations < 1 || s.iterations > 100 || s.nodes > 30000 || s.rollout_nodes > 30000 || s.root_draws < 1
         || !['iterations', 'node_budget', 'deadline'].includes(s.stop_reason)))
         throw Error('Invalid search work bounds');
     }
-    if ((model.source === 'pluribus_search') !== (model.search?.status === 'complete'))
+    if ((model.source !== 'pluribus_blueprint') !== (model.search?.status === 'complete'))
       throw Error('Search source requires completed search evidence');
     for (const a of m.actions) {
       fields(a, ['action', 'label', 'amount_delta', 'raise_to', 'probability']);

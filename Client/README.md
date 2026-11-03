@@ -2,7 +2,9 @@
 
 可加载的 Chrome / Edge Manifest V3 研究采集扩展：**chrome.debugger + Rust/WebAssembly + IndexedDB + 后端 WebSocket**。
 
-## 0.5 已实现
+## Pr1.0
+
+当前扩展数字版本为 0.8.0，配套同仓库 Serve。支持当前下注轮起点搜索、画像来源与独立比较展示；算法和真实样本训练发布见 [Pr1.0](../docs/pr1.0.md)。原有采集功能如下。
 
 - 双向逐条 WebSocket 消息采集，覆盖已识别的允许端点；关联 Worker / iframe 目标递归附着与恢复执行。
 - Rust/WASM 执行消息边界、连续序号、ACK 范围和存储预算检查；失败时停止并显示覆盖缺口。
@@ -21,8 +23,8 @@
 
 ```sh
 cd /home/ubuntu/Project
-git clone https://github.com/Keria2026/TGTO-FronEnd.git
-cd TGTO-FronEnd
+git clone https://github.com/Keria2026/Texas-GTO.git
+cd Texas-GTO/Client
 rustup target add wasm32-unknown-unknown
 npm ci
 npm run build

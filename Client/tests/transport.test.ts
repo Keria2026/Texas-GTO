@@ -105,7 +105,7 @@ test('negotiated server status rejects future results and clears on disconnect',
     ws.on('message', bytes => {
       const m = JSON.parse(bytes.toString());
       if (m.type === 'auth') {
-        assert.deepEqual(m.capabilities, ['network_status_v1', 'capture_state_v1', 'capture_profiles_v1', 'capture_recommendations_v1', 'capture_search_v1']);
+        assert.deepEqual(m.capabilities, ['network_status_v1', 'capture_state_v1', 'capture_profiles_v1', 'capture_recommendations_v1', 'capture_search_v1', 'capture_pr_v1']);
         ws.send(JSON.stringify({ type: 'ready', schema_version: '1.2', capabilities: ['network_events_v1', 'network_status_v1'] }));
       }
       if (m.type === 'network.append') {

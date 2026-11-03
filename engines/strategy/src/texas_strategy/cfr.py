@@ -135,6 +135,7 @@ class Trainer:
         seed: int = 0,
         exploration: float | None = None,
         pluribus: Any = None,
+        fixed_policy: Callable | None = None,
     ) -> None:
         _positive_integer(game.num_players, "num_players")
         if weighting is None:
@@ -145,6 +146,10 @@ class Trainer:
         if algorithm not in ("cfr", "mccfr", "pluribus") or weighting not in ("uniform", "linear"):
             raise ValueError("Unsupported algorithm or iteration weighting")
         self._uses_root_proposal = _training_root_sampler(game, algorithm) is not None
+        if fixed_policy is not None and (not callable(fixed_policy) or algorithm == "pluribus"):
+            raise ValueError("Fixed policies are local CFR/MCCFR constraints")
+        self.fixed_policy = fixed_policy
+        self._fixed_entries: dict[InformationSet, PolicyEntry] = {}
         if algorithm == "pluribus":
             from texas_strategy.pluribus import PluribusConfig
 
@@ -222,7 +227,9 @@ class Trainer:
         for key, entry in self._table.items():
             if check is not None:
                 check()
-            entries[key] = PolicyEntry(entry.actions, regret_matching(entry.regrets))
+            entries[key] = self._fixed_entries.get(key) or PolicyEntry(
+                entry.actions, regret_matching(entry.regrets)
+            )
         result = TabularPolicy(entries, missing=missing)
         if check is not None:
             check()
@@ -290,8 +297,10 @@ class Trainer:
 
         frozen: dict[InformationSet, tuple[float, ...]] = {}
         deltas: dict[InformationSet, _TableEntry] = {}
+        fixed: dict[InformationSet, PolicyEntry] = {}
         for _ in range(iterations):
             rng_state = self._rng.getstate()
+            fixed.clear()
             frozen.clear()
             deltas.clear()
             weight = self.iterations + 1 if self.weighting == "linear" else 1
@@ -304,6 +313,17 @@ class Trainer:
                         raise ValueError("Information set has inconsistent legal actions")
                     deltas[key] = _TableEntry(actions, [0.0] * len(actions), [0.0] * len(actions))
                     frozen[key] = regret_matching(prior.regrets if prior else [0.0] * len(actions))
+                    constrained = (
+                        self.fixed_policy(state, key, actions) if self.fixed_policy else None
+                    )
+                    if constrained is not None:
+                        if (
+                            not isinstance(constrained, PolicyEntry)
+                            or constrained.actions != actions
+                        ):
+                            raise ValueError("Fixed policy has inconsistent legal actions")
+                        fixed[key] = constrained
+                        frozen[key] = constrained.probabilities
                 elif deltas[key].actions != actions:
                     raise ValueError("Information set has inconsistent legal actions")
                 return key, deltas[key], frozen[key]
@@ -334,7 +354,7 @@ class Trainer:
                         )
                         for action, probability in chance_distribution(self.game, state)
                     )
-                _, entry, policy = decision(state)
+                key, entry, policy = decision(state)
                 values = tuple(
                     exact(
                         self.game.transition(state, action),
@@ -347,9 +367,10 @@ class Trainer:
                 value = fsum(p * v for p, v in zip(policy, values, strict=True))
                 if actor == traverser:
                     for index, probability in enumerate(policy):
-                        entry.regrets[index] += (
-                            iteration_weight * external * (values[index] - value)
-                        )
+                        if key not in fixed:
+                            entry.regrets[index] += (
+                                iteration_weight * external * (values[index] - value)
+                            )
                         entry.strategy_sum[index] += iteration_weight * own * probability
                 return value
 
@@ -397,7 +418,7 @@ class Trainer:
                         sampling_reach * probability,
                         ratio,
                     )
-                _, entry, policy = decision(state)
+                key, entry, policy = decision(state)
                 if actor != traverser:
                     proposal = tuple(
                         (1 - self.exploration) * p + self.exploration / len(policy) for p in policy
@@ -425,7 +446,8 @@ class Trainer:
                 )
                 value = fsum(p * v for p, v in zip(policy, values, strict=True))
                 for index, probability in enumerate(policy):
-                    entry.regrets[index] += iteration_weight * ratio * (values[index] - value)
+                    if key not in fixed:
+                        entry.regrets[index] += iteration_weight * ratio * (values[index] - value)
                     entry.strategy_sum[index] += (
                         iteration_weight * own / sampling_reach * probability
                     )
@@ -489,6 +511,7 @@ class Trainer:
                 self._rng.setstate(rng_state)
                 raise
             self._table.update(updates)
+            self._fixed_entries.update({key: fixed[key] for key in updates if key in fixed})
             self.iterations += 1
             completed += 1
         return TrainingDiagnostics(

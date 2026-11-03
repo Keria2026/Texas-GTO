@@ -25,6 +25,7 @@ assert manifest['name'] == 'TGTO Research Capture', 'Refusing to package a fixtu
 revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
 dirty = bool(subprocess.check_output(['git', 'status', '--porcelain'], text=True))
 build = {'commit': revision, 'dirty': dirty, 'client_version': manifest['version'],
+         'release': manifest['version_name'],
          'serve_target': 'Ubuntu 24.04 x86_64, Python 3.12', 'quality': 'preview_unvalidated'}
 for part in ('Serve', 'Client'):
     directory = stage / part

@@ -56,6 +56,7 @@ def authenticate(ws, status=False):
             "capture_profiles_v1",
             "capture_recommendations_v1",
             "capture_search_v1",
+            "capture_pr_v1",
         ],
     )
 

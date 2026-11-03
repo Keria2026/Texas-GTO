@@ -547,9 +547,9 @@ class DepthLimitedGame:
         )
 
     @staticmethod
-    def root_information_key(information_key: str) -> str:
+    def root_information_key(information_key: str, depth: int = 0) -> str:
         return json.dumps(
-            ["multivalue-v1", "play", 0, information_key, None], separators=(",", ":")
+            ["multivalue-v1", "play", depth, information_key, None], separators=(",", ":")
         )
 
     def observation(self, state: SearchState, player: int) -> dict:
@@ -802,6 +802,8 @@ def solve_generated_subgame(
     *,
     target_player: int,
     target_information_key: str,
+    target_depth: int = 0,
+    fixed_policy: Callable | None = None,
     depth_limit: int = 2,
     iterations: int = 100,
     weighting: str = "linear",
@@ -826,7 +828,11 @@ def solve_generated_subgame(
         raise ValueError("generated search requires a SampledRoot")
     if type(iterations) is not int or iterations < 1:
         raise ValueError("search requires at least one iteration")
-    if type(target_player) is not int or target_player != root.actor:
+    if type(target_depth) is not int or not 0 <= target_depth < depth_limit:
+        raise ValueError("Target depth must precede the search cutoff")
+    if type(target_player) is not int or not 0 <= target_player < game.num_players:
+        raise SearchCoverageError("Invalid target player")
+    if target_depth == 0 and target_player != root.actor:
         raise SearchCoverageError("target player must be the public root actor")
     if not isinstance(target_information_key, str) or not target_information_key:
         raise ValueError("target information key must be a nonempty string")
@@ -859,6 +865,8 @@ def solve_generated_subgame(
         max_nodes=max_nodes,
         clock=clock,
         fallback_before=fallback_before,
+        target_depth=target_depth,
+        fixed_policy=fixed_policy,
     )
 
 
@@ -875,12 +883,16 @@ def _train_search(
     clock: TraversalBudget,
     fallback_before: int,
     representative: Any = None,
+    target_depth: int = 0,
+    fixed_policy: Callable | None = None,
 ) -> SearchResult:
     def check_search() -> bool:
         clock.check_time()
         return False
 
-    trainer = Trainer(subgame, algorithm=algorithm, weighting=weighting, seed=seed)
+    trainer = Trainer(
+        subgame, algorithm=algorithm, weighting=weighting, seed=seed, fixed_policy=fixed_policy
+    )
     training_seconds = None
     if clock.deadline_seconds is not None:
         remaining = clock.deadline_seconds - (time.monotonic() - clock.started)
@@ -896,7 +908,7 @@ def _train_search(
     if diagnostics.completed_iterations == 0:
         raise EvaluationLimitError("search budget allowed no complete training iteration")
     average_policy = trainer.average_policy(missing="error", check=clock.check_time)
-    key = player, subgame.root_information_key(requested_info)
+    key = player, subgame.root_information_key(requested_info, target_depth)
     if average_policy.lookup(*key) is None:
         raise SearchCoverageError("search did not train the requested private information set")
     policy = trainer.current_policy(missing="error", check=clock.check_time)

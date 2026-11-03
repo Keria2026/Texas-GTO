@@ -173,15 +173,19 @@ function RecommendationView({ recommendation, connected }: { recommendation?: Re
     <p className="help">第 {recommendation.hand_id!.split(':')[1]} 手 · 按策略频率抽取一次建议</p>
     <ul className="events">{recommendation.actions.map(a => <li key={a.label}>{actionNames[a.action]} {amount(a)}
       <small>策略频率 {(a.probability * 100).toFixed(1)}%</small></li>)}</ul>
-    <p className="notice">试运行策略：仅计算两手视野，尚未完成实局质量验收；玩家画像尚未用于调整建议。频率不是胜率。</p>
+    <p className="notice">{recommendation.pr ? 'Pr1.0' : '试运行策略'}：计算两手视野，频率不是胜率；策略质量仍待实局验收。
+      {recommendation.model!.opponent_adaptation ? '本次已采用通过抽样比较的画像调整。' : '本次使用自博弈基线；画像尚未达到本局调整条件。'}</p>
     <details><summary>模型来源</summary>
-      <p className="help">{recommendation.model!.source === 'pluribus_search' ? 'Pluribus 限时搜索' : 'Pluribus 自博弈策略'} · 累计 {recommendation.model!.iterations} 轮 · {recommendation.model!.version.slice(0, 12)}</p>
+      <p className="help">{recommendation.model!.source === 'profile_search' ? '画像条件搜索 · 25% 调整' : recommendation.model!.source === 'pluribus_search' ? 'Pluribus 限时搜索' : 'Pluribus 自博弈策略'} · 累计 {recommendation.model!.iterations} 轮 · {recommendation.model!.version.slice(0, 12)}</p>
+      {recommendation.pr && <p className="help">搜索起点为当前下注轮，完成情况见下方诊断。画像模型：{recommendation.pr.opponent_version?.slice(0, 12) ?? '等待足够的完整牌局及评测通过'}。</p>}
+      {recommendation.pr?.evaluation && <p className="help">独立比较 {recommendation.pr.evaluation.samples} 次，模型内增益 {recommendation.pr.evaluation.delta_points.toFixed(2)} 分，标准误 {recommendation.pr.evaluation.standard_error.toFixed(2)} 分；不代表实局收益保证。</p>}
       {recommendation.model!.source === 'pluribus_search' && recommendation.warnings.includes('latest_completed_search_policy')
         && <p className="help">行动策略：最新完整迭代，尚未验证收敛。</p>}
       {recommendation.model!.search && <p className="help">{recommendation.model!.search.status === 'complete'
         ? `本次搜索完成 ${recommendation.model!.search.iterations} 轮，耗时 ${recommendation.model!.search.elapsed_ms} 毫秒；不代表已收敛或最优。`
         : recommendation.model!.search.status === 'coverage_missing' ? '后续策略覆盖不足，本次使用已训练的当前节点策略。'
-          : '搜索未在预算内完成，本次使用已训练的当前节点策略。'}</p>}
+          : recommendation.model!.search.status === 'profile_rejected' ? '画像候选的收益证据不足，保持基线建议。'
+            : '搜索未在预算内完成，本次使用已训练的当前节点策略。'}</p>}
     </details>
   </>;
 }

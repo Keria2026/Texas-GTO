@@ -5,10 +5,11 @@ import hmac
 import json
 import re
 import sqlite3
+from collections import OrderedDict
 from contextlib import closing, nullcontext
 from datetime import datetime
 from pathlib import Path
-from threading import Event
+from threading import Event, Lock
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
@@ -17,8 +18,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from starlette.concurrency import run_in_threadpool
 
 from texas_strategy.evaluation import CancellationError
+from texas_strategy.policy import TabularPolicy
 
-from . import capture_learning
+from . import capture_learning, capture_strategy
 from .capture_contract import (
     CAPABILITY as BUSINESS_CAPABILITY,
 )
@@ -32,7 +34,7 @@ from .capture_contract import (
 )
 from .capture_ledger import derive_mushroom_ledger, derive_recorded_mushroom_ledger
 from .capture_recommendation import CAPABILITY as RECOMMENDATIONS_CAPABILITY
-from .capture_recommendation import SEARCH_CAPABILITY, recommend
+from .capture_recommendation import PR_CAPABILITY, SEARCH_CAPABILITY, recommend
 from .capture_replay import ReplayUnavailable, replay_capture
 from .capture_state import reduce_event
 from .capture_state import response as capture_response
@@ -153,9 +155,10 @@ class StreamAuth(StrictModel):
                 "capture_profiles_v1",
                 "capture_recommendations_v1",
                 "capture_search_v1",
+                "capture_pr_v1",
             ]
         ],
-        Field(max_length=5),
+        Field(max_length=6),
     ] = []
 
 
@@ -178,6 +181,9 @@ class NetworkStore:
         if stream not in ("network", "capture"):
             raise ValueError("Unknown stream")
         self.stream = stream
+        self.search_memory = OrderedDict()
+        self.search_lock = Lock()
+        self.learning_lock = Lock()
         self.policy_path = policy_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch(mode=0o600, exist_ok=True)
@@ -203,6 +209,63 @@ class NetworkStore:
                     db.execute("BEGIN IMMEDIATE")
                     capture_learning.initialize(db)
                     self._restore_learning(db)
+                    capture_strategy.initialize(db)
+
+    def train_behavior(self, should_cancel=lambda: False):
+        if not self.learning_lock.acquire(blocking=False):
+            return
+
+        def check():
+            if should_cancel():
+                raise CancellationError("Behavior training cancelled")
+
+        try:
+            with closing(self.connect()) as db:
+                origins = [
+                    row[0] for row in db.execute("SELECT DISTINCT origin FROM capture_heads")
+                ]
+            for origin in origins:
+                check()
+                with closing(self.connect()) as db, db:
+                    db.execute("BEGIN")
+                    active = capture_strategy.load(db, origin)
+                    boundary = db.execute(
+                        "SELECT COALESCE(MAX(e.rowid),0) FROM capture_learning_outcomes o "
+                        "JOIN capture_events e ON e.origin=o.origin AND e.source=o.source "
+                        "AND e.sequence=o.sequence WHERE o.origin=? AND "
+                        "json_extract(o.body,'$.eligible_for_completed_hand_dataset')=1",
+                        (origin,),
+                    ).fetchone()[0]
+                    if db.execute(
+                        "SELECT 1 FROM capture_strategy_runs WHERE origin=? AND boundary=?",
+                        (origin, boundary),
+                    ).fetchone():
+                        continue
+                    samples, excluded, boundary = capture_strategy.dataset(db, origin, check)
+                    report, candidate = capture_strategy.candidate(
+                        samples, boundary=boundary, excluded=excluded, active=active
+                    )
+                check()
+                with closing(self.connect()) as db, db:
+                    db.execute("BEGIN IMMEDIATE")
+                    capture_strategy.publish(
+                        db,
+                        origin,
+                        report,
+                        candidate,
+                        expected=active["version"] if active else None,
+                    )
+        finally:
+            self.learning_lock.release()
+
+    def learning_status(self, origin):
+        with closing(self.connect()) as db:
+            return capture_strategy.status(db, origin)
+
+    def rollback_behavior(self, origin, expected):
+        with closing(self.connect()) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            return capture_strategy.rollback(db, origin, expected)
 
     def _restore_learning(self, db):
         for origin, source, head in db.execute("SELECT origin,source,sequence FROM capture_heads"):
@@ -341,11 +404,28 @@ class NetworkStore:
             prefix = self._public_hand_prefix(db, origin, source, row[0], state)
         return row[0], state, prefix
 
-    def recommendation(self, origin, source, should_cancel=None, *, search=False):
+    def recommendation(self, origin, source, should_cancel=None, *, search=False, pr=False):
         observed = self._observation(origin, source)
         if observed is None:
             return None
         through, state, prefix = observed
+        context, opponent = None, None
+        memory_key = origin, source, state["hand_id"]
+        if pr:
+            with self.search_lock:
+                context = {"previous": self.search_memory.get(memory_key, ())}
+            with closing(self.connect()) as db, db:
+                db.execute("BEGIN")
+                try:
+                    opponent = capture_strategy.load(db, origin)
+                except ValueError:
+                    opponent = None
+                event_id = db.execute(
+                    "SELECT rowid FROM capture_events WHERE origin=? AND source=? AND sequence=?",
+                    (origin, source, through.zfill(20)),
+                ).fetchone()
+                if opponent and (event_id is None or event_id[0] <= opponent["available_after"]):
+                    opponent = None
         result = recommend(
             source=source,
             through=through,
@@ -354,6 +434,7 @@ class NetworkStore:
             policy_path=self.policy_path,
             should_cancel=should_cancel,
             search=search,
+            **({"pr_context": context, "opponent_model": opponent} if pr else {}),
             ledger_resolver=lambda **kwargs: self._ledger(
                 origin, source, through, should_cancel=should_cancel, **kwargs
             ),
@@ -363,7 +444,28 @@ class NetworkStore:
             current = db.execute(
                 "SELECT sequence FROM capture_state WHERE origin=? AND source=?", (origin, source)
             ).fetchone()
-        return result if current is not None and current[0] == through else None
+        if current is None or current[0] != through:
+            return None
+        if should_cancel is not None and should_cancel():
+            return None
+        if result["status"] == "ready" and context is not None and "record" in context:
+            record = context["record"]
+            with self.search_lock:
+                previous = self.search_memory.pop(memory_key, ())
+                published = {}
+                for old in previous:
+                    if old["street"] == record["street"]:
+                        published.update(old["published"].entries)
+                        if not record["average"].entries:
+                            record["current"], record["average"] = old["current"], old["average"]
+                published.update(record["published"].entries)
+                record["published"] = TabularPolicy(published, missing="error")
+                self.search_memory[memory_key] = tuple(
+                    r for r in previous if r["street"] != record["street"]
+                ) + (record,)
+                while len(self.search_memory) > 2:
+                    self.search_memory.popitem(last=False)
+        return result
 
     @staticmethod
     def _state_response(source, through, state, prefix, *, ledger_resolver=None):
@@ -499,6 +601,7 @@ async def network_stream(
                     PROFILES_CAPABILITY,
                     RECOMMENDATIONS_CAPABILITY,
                     SEARCH_CAPABILITY,
+                    PR_CAPABILITY,
                 ],
             }
         )
@@ -514,6 +617,7 @@ async def network_stream(
                         source,
                         stop.is_set,
                         **({"search": True} if SEARCH_CAPABILITY in auth.capabilities else {}),
+                        **({"pr": True} if PR_CAPABILITY in auth.capabilities else {}),
                     )
                 except CancellationError:
                     return None
