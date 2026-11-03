@@ -133,8 +133,17 @@ def main(argv=None):
     restore = commands.add_parser("restore")
     restore.add_argument("--bundle", type=Path, required=True)
     restore.add_argument("--data-dir", type=Path, required=True)
+    compact = commands.add_parser("compact", help="Stop service first; keep only current rule rows")
+    compact.add_argument("--data-dir", type=Path, required=True)
+    compact.add_argument("--backup", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
+        if args.command == "compact":
+            from .compact_state import compact_state
+
+            result = compact_state(args.data_dir, args.backup)
+            print(json.dumps(result, indent=2))
+            return 0
         result = (
             export_state(args.data_dir, args.output, core_only=args.core_only)
             if args.command == "export"

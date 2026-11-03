@@ -14,7 +14,7 @@ from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -44,6 +44,8 @@ from .research import QueueFullError, ResearchManager, analyze
 from .storage import ConflictError, SessionStore
 
 DEFAULT_ORIGINS = (
+    "http://127.0.0.1:8765",
+    "http://localhost:8765",
     "http://127.0.0.1:5173",
     "http://localhost:5173",
     "http://127.0.0.1:5174",
@@ -51,6 +53,13 @@ DEFAULT_ORIGINS = (
 )
 EXTENSION_ORIGIN = r"chrome-extension://[a-p]{32}"
 MAX_BODY_BYTES = 256 * 1024
+
+
+class SimulationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    seed: int = Field(ge=0, le=2**32 - 1)
+    street: int = Field(default=0, ge=0, le=3)
+    search: bool = True
 
 
 class RollbackBehavior(BaseModel):
@@ -80,7 +89,11 @@ class LocalBoundary:
                 self.token is None and re.fullmatch(EXTENSION_ORIGIN, value)
             ):
                 return await reject(403, "Origin is not allowed")
-        public = scope["path"] == "/v1/health" and scope["method"] == "GET"
+        public = (
+            scope["path"]
+            in ("/v1/health", "/training", "/training/monitor.js", "/training/monitor.css")
+            and scope["method"] == "GET"
+        )
         if not public and scope["method"] != "OPTIONS":
             if self.token is None:
                 # A fixed client marker forces browser preflight; it is not a credential.
@@ -160,6 +173,9 @@ def create_app(
         if configured not in ("0", "1"):
             raise ValueError("TEXAS_AUTO_TRAIN must be 0 or 1")
         auto_train = configured == "1"
+    from .training_monitor import TrainingMonitor, simulate
+
+    monitor = TrainingMonitor(directory.absolute() / "core" / "training.sqlite3")
     core = CoreTraining(directory / "core", enabled=auto_train)
     resources = {}
     capture_resources = {}
@@ -283,6 +299,36 @@ def create_app(
             get_capture_store=get_capture_store,
             foreground=core.foreground,
         )
+
+    @app.get("/training", include_in_schema=False)
+    def training_page():
+        return FileResponse(
+            Path(__file__).parent / "monitor" / "index.html",
+            headers={
+                "Content-Security-Policy": "default-src 'self'; script-src 'self'; "
+                "style-src 'self'; "
+                "object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+            },
+        )
+
+    @app.get("/training/{asset}", include_in_schema=False)
+    def training_asset(asset: str):
+        if asset not in ("monitor.js", "monitor.css"):
+            raise HTTPException(404)
+        return FileResponse(Path(__file__).parent / "monitor" / asset)
+
+    @app.get("/v1/training-monitor")
+    def training_status():
+        return {"worker": core.status().model_dump(), "model": monitor.status()}
+
+    @app.post("/v1/training-monitor/simulate")
+    def training_simulation(body: SimulationRequest):
+        if not compute_slots.acquire(blocking=False):
+            raise HTTPException(429, "计算中，请稍后重试")
+        try:
+            return simulate(monitor.path, seed=body.seed, street=body.street, search=body.search)
+        finally:
+            compute_slots.release()
 
     @app.get("/v1/health", response_model=HealthResponse)
     def health():

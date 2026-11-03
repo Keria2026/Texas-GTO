@@ -63,13 +63,13 @@ window.startStream=()=>{window.ws=new WebSocket("ws://127.0.0.1:8767/main");ws.o
     async function stopServer() {
       if (server && server.exitCode === null) { const exited = once(server, 'exit'); server.kill('SIGTERM'); await exited; }
     }
-    // Installation starts retries before the algorithm service is available.
+    // The single start action authorizes local communication and capture.
     await startServer();
-    await until(async () => (await command({ type: 'status' })).transportState === 'ready');
     assert.equal(await panel.locator('input[type="password"]').count(), 0);
     const page = await context.newPage(); await page.goto('http://127.0.0.1:8767/');
     const tabId = (await panel.evaluate(() => chrome.tabs.query({}))).find(t => t.url === 'http://127.0.0.1:8767/').id;
-    await command({ type: 'start', tabId, raw: false });
+    await panel.getByRole('button', { name: '开始对局', exact: true }).click();
+    await until(async () => (await command({ type: 'status' })).transportState === 'ready');
     await page.evaluate(() => window.startStream());
     await until(async () => (await command({ type: 'status' })).businessStatus === 'ready');
     await page.evaluate(() => window.__wpkFixture.play());
@@ -79,18 +79,16 @@ window.startStream=()=>{window.ws=new WebSocket("ws://127.0.0.1:8767/main");ws.o
         && s.serverCapture?.through_sequence === s.business?.last && s.serverCapture?.state.closed
         && s.serverProfiles?.through_sequence === s.business?.last;
     });
-    await until(async () => (await panel.getByText('当前建议与此版本绑定；继续行动后会重新校验。', { exact: true }).count()) === 1);
+
     assert.equal((await command({ type: 'status' })).serverCapture.analysis.actions.length, 0);
     const profiles = (await command({ type: 'status' })).serverProfiles;
     assert.equal(profiles.identity_scope, 'origin_source');
     assert.ok(profiles.players.some(p => p.action_observations > 0));
-    const profileSection = panel.locator('section[aria-labelledby="profiles-title"]');
-    await profileSection.getByText('本人', { exact: true }).waitFor();
-    assert.match(await profileSection.innerText(), /不是行动建议或胜率/);
+    assert.equal(await panel.locator('section[aria-labelledby="profiles-title"]').count(), 0);
     await stopServer();
     await until(async () => (await command({ type: 'status' })).transportState === 'retrying');
     assert.equal((await command({ type: 'status' })).serverProfiles, undefined);
-    await profileSection.getByText('服务未连接，已清除旧画像。').waitFor();
+    await panel.getByText('正在重连', { exact: true }).waitFor();
     await startServer();
     await until(async () => (await command({ type: 'status' })).transportState === 'ready');
     await until(async () => (await command({ type: 'status' })).serverProfiles?.through_sequence === profiles.through_sequence);
@@ -108,7 +106,7 @@ window.startStream=()=>{window.ws=new WebSocket("ws://127.0.0.1:8767/main");ws.o
     const restoredWorker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
     const restored = await context.newPage();
     await restored.goto(`chrome-extension://${restoredWorker.url().split('/')[2]}/sidepanel.html`);
-    await until(async () => (await restored.evaluate(() => chrome.runtime.sendMessage({ type: 'status' }))).value.transportState === 'ready');
+    assert.equal((await restored.evaluate(() => chrome.runtime.sendMessage({ type: 'status' }))).value.transportState, 'disconnected');
     assert.equal(await restored.locator('input[type="password"]').count(), 0);
 
   } finally {
