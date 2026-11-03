@@ -1,15 +1,18 @@
 """Synthetic causal capture-to-curriculum tests; no strategy-strength claim."""
 
 import json
+import os
 import sqlite3
 from copy import deepcopy
+from threading import Event
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 from test_capture_recommendation import ORIGIN, batch, eight_player_events
 from test_core_training import wait_for
 
-from texas_analysis import capture_openings
+from texas_analysis import capture_openings, core_training
 from texas_analysis.app import create_app
 from texas_analysis.core_training import _incorporate_openings
 from texas_analysis.network_stream import NetworkStore
@@ -206,6 +209,31 @@ def test_invalid_persisted_opening_cannot_change_a_core(tmp_path):
         assert not list(directory.glob("before-openings-*.sqlite3"))
     finally:
         trainer._store.close()
+
+
+def test_worker_reports_committed_openings_before_a_long_training_iteration(tmp_path, monkeypatch):
+    store = NetworkStore(tmp_path / "capture.sqlite3", stream="capture")
+    store.append(ORIGIN, batch(events()))
+    store.collect_training_openings()
+    directory = tmp_path / "core"
+    trainer = open_trainer(MushroomPopulationGame.default(ante=4), directory / "training.sqlite3")
+    permission, stopped = Event(), Event()
+    permission.set()
+    monkeypatch.setattr(core_training, "_open_core_trainer", lambda *a, **k: trainer)
+    monkeypatch.setattr(core_training.os, "nice", lambda _: None)
+    monkeypatch.setattr(core_training.resource, "setrlimit", lambda *args: None)
+
+    def train(*args, **kwargs):
+        status = json.loads((directory / "progress.json").read_text())
+        assert status["training_roots"] == 490 and status["observed_openings"] == 1
+        assert status["iterations"] == 0 and status["phase"] == "training"
+        stopped.set()
+        return SimpleNamespace(completed_iterations=0)
+
+    monkeypatch.setattr(trainer, "train", train)
+    core_training._train(directory, permission, stopped, os.getppid(), 64 * 1024 * 1024)
+    status = json.loads((directory / "progress.json").read_text())
+    assert status["phase"] == "stopped" and status["reason"] is None
 
 
 def test_service_collects_and_trains_automatically_then_exports_both_histories(tmp_path):

@@ -237,6 +237,8 @@ def _train(directory, permission, stopped, parent_pid, checkpoint_limit):
         publish("waiting_for_idle", force=True)
         while not cooperate():
             status.opening_capacity_reached = _incorporate_openings(trainer, directory)
+            record_saved(trainer)
+            publish("training", force=True)
             # No wall deadline: foreground pauses must not discard a long iteration.
             diagnostics = trainer.train(1, should_cancel=cooperate)
             if not diagnostics.completed_iterations:
