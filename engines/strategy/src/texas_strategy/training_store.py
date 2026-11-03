@@ -1,7 +1,7 @@
 """Bounded-cache, transactional Pluribus tables and portable SQLite snapshots.
 
-Only one iteration's working set lives in Python. Returned entries are copies;
-write them explicitly inside begin/commit. JSON migration is a one-time bounded
+Returned entries are copies; write them explicitly inside begin/commit.
+Iteration updates spill to a private temporary database. JSON migration is a bounded
 legacy import; existing databases never fall back to an older checkpoint.
 """
 
@@ -9,8 +9,9 @@ import json
 import os
 import sqlite3
 import tempfile
+from collections import OrderedDict
 from collections.abc import Iterator, Mapping
-from contextlib import closing
+from contextlib import closing, contextmanager
 from math import isfinite
 from pathlib import Path
 from random import Random
@@ -31,6 +32,7 @@ from texas_strategy.policy import InformationSet, PolicyEntry
 
 SCHEMA_VERSION = 1
 _PAGE_SIZE = 256
+_WORKING_CACHE_SIZE = 4096
 _COLUMNS = "id,player,information_key,actions,regrets,strategy_sum,stage,has_average"
 _SCHEMA = (
     "CREATE TABLE training_meta (singleton INTEGER PRIMARY KEY CHECK(singleton=1), "
@@ -234,6 +236,90 @@ class _Stages(Mapping[InformationSet, int]):
         if row is None:
             raise KeyError(key)
         return row[0]
+
+
+class _IterationStore:
+    """Keep active recursion entries identical; spill inactive entries within one iteration."""
+
+    def __init__(self, store: "TrainingStore") -> None:
+        self._store = store
+        self._cache = OrderedDict()
+        self._active = {}
+        self._db = sqlite3.connect("")
+        try:
+            self._db.execute("PRAGMA cache_size=-8192")
+            self._db.execute("PRAGMA mmap_size=0")
+            self._db.execute("PRAGMA temp_store=FILE")
+            # This scratch database is discarded on any failure; the main store stays FULL/WAL.
+            self._db.execute("PRAGMA journal_mode=OFF")
+            self._db.execute("PRAGMA synchronous=OFF")
+            self._db.execute(_SCHEMA[1])
+        except BaseException:
+            self._db.close()
+            raise
+
+    def _save(self, key, entry, stage):
+        _insert(self._db, _record(key, entry, stage, self._store.game))
+
+    @contextmanager
+    def entry(self, key, actions, stage):
+        if key not in self._active:
+            cached = self._cache.pop(key, None)
+            if cached is None:
+                row = self._db.execute(
+                    f"SELECT {_COLUMNS} FROM training_entries WHERE player=? AND information_key=?",
+                    key,
+                ).fetchone()
+                if row is not None:
+                    _, entry, previous_stage = self._store._decode(row)
+                else:
+                    try:
+                        entry = self._store[key]
+                        previous_stage = _Stages(self._store)[key]
+                    except KeyError:
+                        entry = _TableEntry(actions, [0.0] * len(actions), [0.0] * len(actions))
+                        previous_stage = stage
+                cached = entry, previous_stage
+            self._active[key] = [*cached, 0]
+        active = self._active[key]
+        entry, previous_stage, _ = active
+        if entry.actions != actions or previous_stage != stage:
+            raise ValueError("Information set changes legal actions or betting round")
+        active[2] += 1
+        try:
+            yield entry
+        finally:
+            active[2] -= 1
+            if not active[2]:
+                del self._active[key]
+                self._cache[key] = entry, stage
+                while len(self._cache) > _WORKING_CACHE_SIZE:
+                    old_key, (old_entry, old_stage) = self._cache.popitem(last=False)
+                    self._save(old_key, old_entry, old_stage)
+
+    def __contains__(self, key):
+        return (
+            key in self._active
+            or key in self._cache
+            or self._db.execute(
+                "SELECT 1 FROM training_entries WHERE player=? AND information_key=?", key
+            ).fetchone()
+            is not None
+        )
+
+    def scan(self):
+        if self._active:
+            raise ValueError("Cannot persist an active traversal")
+        while self._cache:
+            key, (entry, stage) = self._cache.popitem(last=False)
+            self._save(key, entry, stage)
+        for row in self._db.execute(f"SELECT {_COLUMNS} FROM training_entries ORDER BY id"):
+            yield self._store._decode(row)
+
+    def close(self):
+        self._cache.clear()
+        self._active.clear()
+        self._db.close()
 
 
 class TrainingStore(Mapping[InformationSet, _TableEntry]):

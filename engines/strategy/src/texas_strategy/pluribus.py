@@ -8,6 +8,7 @@ paper's 800-minute averaging warmup, card buckets, integer storage or scale.
 """
 
 from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, fields
 from math import fsum, isfinite
 from random import Random
@@ -158,26 +159,34 @@ def train(
         return action
 
     store = getattr(trainer, "_store", None)
-    # shortcut: one iteration stays in RAM; spill this working set if it reaches the worker cap.
-    working, rounds = {}, {}
     for _ in range(iterations):
         saved_rng = rng.getstate()
-        working.clear()
-        rounds.clear()
+        rounds = {}
+        if store is not None:
+            from texas_strategy.training_store import _IterationStore
+
+            working = _IterationStore(store)
+        else:
+            working = {}
         t = trainer.iterations + 1
 
-        def copy_entry(key):
+        def copy_entry(key, working=working, rounds=rounds):
             if key not in working:
                 old = trainer._table[key]
                 working[key] = _TableEntry(old.actions, old.regrets.copy(), old.strategy_sum.copy())
                 rounds[key] = trainer._betting_rounds[key]
             return working[key]
 
-        def decision(state):
+        @contextmanager
+        def decision(state, working=working, rounds=rounds, copy_entry=copy_entry):
             key, actions = legal_information(game, state)
             stage = game.betting_round(state)
             if type(stage) is not int or not 0 <= stage <= game.final_betting_round:
                 raise ValueError("Invalid betting round")
+            if store is not None:
+                with working.entry(key, actions, stage) as entry:
+                    yield entry, regret_matching(entry.regrets)
+                return
             if key not in working:
                 if key in trainer._table:
                     copy_entry(key)
@@ -187,7 +196,7 @@ def train(
             if entry.actions != actions or rounds.get(key, stage) != stage:
                 raise ValueError("Information set changes legal actions or betting round")
             rounds[key] = stage
-            return entry, regret_matching(entry.regrets)
+            yield entry, regret_matching(entry.regrets)
 
         def average(state, player):
             visit()
@@ -201,14 +210,14 @@ def train(
             if actor == -1:
                 average(game.transition(state, chance(state)), player)
                 return
-            entry, policy = decision(state)
-            if actor == player:
-                index = sample(policy)
-                entry.strategy_sum[index] += 1
-                average(game.transition(state, entry.actions[index]), player)
-            else:
-                for action in entry.actions:
-                    average(game.transition(state, action), player)
+            with decision(state) as (entry, policy):
+                if actor == player:
+                    index = sample(policy)
+                    entry.strategy_sum[index] += 1
+                    average(game.transition(state, entry.actions[index]), player)
+                else:
+                    for action in entry.actions:
+                        average(game.transition(state, action), player)
 
         def sampled_average(player, source):
             state, weight = game.initial_state(), 1.0
@@ -224,25 +233,25 @@ def train(
                 if actor == -1:
                     state = game.transition(state, chance(state, source))
                     continue
-                entry, policy = decision(state)
-                if actor == player:
-                    # Conditional expectation of the sampled own-action counter.
-                    for index, probability in enumerate(policy):
-                        value = (
-                            entry.strategy_sum[index]
-                            + weight * probability / config.average_samples
-                        )
-                        if not isfinite(value):
-                            raise ValueError("Nonfinite sampled average update")
-                        entry.strategy_sum[index] = value
-                    index = sample(policy, source)
-                else:
-                    # Only past opponent proposals are corrected; chance and own reach stay.
-                    index = source.randrange(len(entry.actions))
-                    weight *= len(entry.actions)
-                    if not isfinite(weight):
-                        raise ValueError("Nonfinite sampled average importance weight")
-                state = game.transition(state, entry.actions[index])
+                with decision(state) as (entry, policy):
+                    if actor == player:
+                        # Conditional expectation of the sampled own-action counter.
+                        for index, probability in enumerate(policy):
+                            value = (
+                                entry.strategy_sum[index]
+                                + weight * probability / config.average_samples
+                            )
+                            if not isfinite(value):
+                                raise ValueError("Nonfinite sampled average update")
+                            entry.strategy_sum[index] = value
+                        index = sample(policy, source)
+                    else:
+                        # Only past opponent proposals are corrected; chance and own reach stay.
+                        index = source.randrange(len(entry.actions))
+                        weight *= len(entry.actions)
+                        if not isfinite(weight):
+                            raise ValueError("Nonfinite sampled average importance weight")
+                    state = game.transition(state, entry.actions[index])
 
         def traverse(state, player, prune):
             nonlocal pruned
@@ -257,29 +266,29 @@ def train(
                 return float(values[player])
             if actor == -1:
                 return traverse(game.transition(state, chance(state)), player, prune)
-            entry, policy = decision(state)
-            if actor != player:
-                return traverse(
-                    game.transition(state, entry.actions[sample(policy)]), player, prune
-                )
-            values = {}
-            for i, action in enumerate(entry.actions):
-                child = game.transition(state, action)
-                # Never remove positive policy mass, river actions or immediate payoffs.
-                if (
-                    prune
-                    and entry.regrets[i] <= config.prune_threshold
-                    and policy[i] == 0
-                    and game.betting_round(state) < game.final_betting_round
-                    and game.actor(child) is not None
-                ):
-                    pruned += 1
-                    continue
-                values[i] = traverse(child, player, prune)
-            value = fsum(policy[i] * v for i, v in values.items())
-            for i, v in values.items():
-                entry.regrets[i] = max(config.regret_floor, entry.regrets[i] + v - value)
-            return value
+            with decision(state) as (entry, policy):
+                if actor != player:
+                    return traverse(
+                        game.transition(state, entry.actions[sample(policy)]), player, prune
+                    )
+                values = {}
+                for i, action in enumerate(entry.actions):
+                    child = game.transition(state, action)
+                    # Never remove positive policy mass, river actions or immediate payoffs.
+                    if (
+                        prune
+                        and entry.regrets[i] <= config.prune_threshold
+                        and policy[i] == 0
+                        and game.betting_round(state) < game.final_betting_round
+                        and game.actor(child) is not None
+                    ):
+                        pruned += 1
+                        continue
+                    values[i] = traverse(child, player, prune)
+                value = fsum(policy[i] * v for i, v in values.items())
+                for i, v in values.items():
+                    entry.regrets[i] = max(config.regret_floor, entry.regrets[i] + v - value)
+                return value
 
         try:
             if store is not None:
@@ -330,10 +339,10 @@ def train(
                             transform(entry, stage)
                             if any(entry.regrets) or any(entry.strategy_sum):
                                 store.set_entry(key, entry, stage)
-                for key, entry in working.items():
-                    transform(entry, rounds[key])
+                for key, entry, stage in working.scan():
+                    transform(entry, stage)
                     if any(entry.regrets) or any(entry.strategy_sum):
-                        store.set_entry(key, entry, rounds[key])
+                        store.set_entry(key, entry, stage)
             else:
                 if discount or snapshot:
                     for key in trainer._table.keys() | working.keys():
@@ -364,6 +373,9 @@ def train(
                 store.rollback()
             rng.setstate(saved_rng)
             raise
+        finally:
+            if store is not None:
+                working.close()
         if store is None:
             trainer._table.update(updates)
             trainer._betting_rounds.update({key: rounds[key] for key in updates})
