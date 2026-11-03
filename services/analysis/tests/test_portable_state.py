@@ -88,3 +88,21 @@ def test_existing_data_is_never_overwritten_and_cli_roundtrip(data, tmp_path, ca
     with pytest.raises(FileExistsError):
         export_state(data, bundle)
     assert (target / "core/training.sqlite3").read_bytes() == before
+
+
+def test_core_only_cli_export_excludes_capture_and_preserves_training(data, tmp_path):
+    with sqlite3.connect(data / "capture.sqlite3") as db:
+        db.execute("CREATE TABLE private_events (body TEXT)")
+        db.execute("INSERT INTO private_events VALUES ('private capture')")
+    bundle, restored = tmp_path / "core-bundle", tmp_path / "core-restored"
+    assert main(["export", "--data-dir", str(data), "--output", str(bundle), "--core-only"]) == 0
+    manifest = restore_state(bundle, restored)
+    assert set(manifest["files"]) == {"core/training.sqlite3"}
+    assert not (bundle / "capture.sqlite3").exists()
+    assert not (restored / "capture.sqlite3").exists()
+    trainer = open_trainer(KuhnPoker(), restored / "core/training.sqlite3")
+    try:
+        assert trainer.iterations == 3
+        assert trainer.train(1).completed_iterations == 1
+    finally:
+        trainer._store.close()

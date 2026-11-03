@@ -146,7 +146,7 @@ export class ResearchSocket {
           if (!this.ready || !this.capabilities.has(RECOMMENDATIONS_CAPABILITY)) throw Error('Unnegotiated recommendation');
           const result = parseRecommendation(message);
           if (result.model?.search && !this.capabilities.has(SEARCH_CAPABILITY)) throw Error('Unnegotiated search');
-          if (result.pr && !this.capabilities.has(PR_CAPABILITY)) throw Error('Unnegotiated Pr1.0 recommendation');
+          if (result.pr && !this.capabilities.has(PR_CAPABILITY)) throw Error('Unnegotiated Pre1.0 recommendation');
           const source = (await this.db.sessions()).find(s => s.id === result.source_id);
           if (generation !== this.generation || ws.readyState !== WebSocket.OPEN) return;
           if (!source || source.stream !== 'business' || sequence(result.through_sequence) > sequence(source.ack)) throw Error('Recommendation is not acknowledged');

@@ -23,7 +23,7 @@ export interface Recommendation {
     rules_version: string; quality: 'finite_horizon_unvalidated'; horizon_hands: 2; opponent_adaptation: boolean;
     search?: SearchDiagnostics };
   warnings: string[];
-  pr?: { release: 'Pr1.0'; search_root: 'street_start'; target_depth: number | null;
+  pr?: { release: 'Pre1.0' | 'Pr1.0'; search_root: 'street_start'; target_depth: number | null;
     opponent_version: string | null; adaptation_weight: number; evaluation: ProfileEvaluation | null };
 }
 function fields(value: any, keys: string[]): asserts value is Record<string, any> {
@@ -39,10 +39,10 @@ export function parseRecommendation(input: unknown): Recommendation {
   if (m.pr !== undefined) {
     const p = m.pr;
     fields(p, ['release', 'search_root', 'target_depth', 'opponent_version', 'adaptation_weight', 'evaluation']);
-    if (p.release !== 'Pr1.0' || p.search_root !== 'street_start'
+    if (!['Pre1.0', 'Pr1.0'].includes(p.release) || p.search_root !== 'street_start'
       || (p.target_depth !== null && (!integer(p.target_depth) || p.target_depth > 4096))
       || (p.opponent_version !== null && (typeof p.opponent_version !== 'string' || !/^[a-f0-9]{64}$/.test(p.opponent_version)))
-      || ![0, 0.25].includes(p.adaptation_weight)) throw Error('Invalid Pr1.0 provenance');
+      || ![0, 0.25].includes(p.adaptation_weight)) throw Error('Invalid Pre1.0 provenance');
     if (p.evaluation !== null) {
       const e = p.evaluation;
       fields(e, ['accepted', 'samples', 'effective_samples', 'delta_points', 'standard_error', 'lower_bound']);

@@ -235,8 +235,8 @@ def create_app(
                 resources["manager"].close()
 
     app = FastAPI(
-        title="Texas GTO Offline Research",
-        version="0.1.0",
+        title="Texas GTO Pre1.0",
+        version="0.8.3",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,

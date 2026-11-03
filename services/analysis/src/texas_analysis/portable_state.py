@@ -41,7 +41,7 @@ def _new_destination(path):
     return path
 
 
-def export_state(data_dir, output):
+def export_state(data_dir, output, *, core_only=False):
     """Each SQLite backup includes its committed WAL; no live main-file copies."""
     source, output = Path(data_dir), _new_destination(output)
     if not (source / FILES[0]).is_file():
@@ -50,7 +50,7 @@ def export_state(data_dir, output):
         stage = Path(temporary) / "bundle"
         stage.mkdir(mode=0o700)
         manifest = {"schema_version": 1, "files": {}}
-        for name in FILES:
+        for name in FILES[:1] if core_only else FILES:
             original, target = source / name, stage / name
             if not original.exists():
                 continue
@@ -127,13 +127,16 @@ def main(argv=None):
     export = commands.add_parser("export")
     export.add_argument("--data-dir", type=Path, required=True)
     export.add_argument("--output", type=Path, required=True)
+    export.add_argument(
+        "--core-only", action="store_true", help="Exclude captured events and profiles"
+    )
     restore = commands.add_parser("restore")
     restore.add_argument("--bundle", type=Path, required=True)
     restore.add_argument("--data-dir", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
         result = (
-            export_state(args.data_dir, args.output)
+            export_state(args.data_dir, args.output, core_only=args.core_only)
             if args.command == "export"
             else restore_state(args.bundle, args.data_dir)
         )

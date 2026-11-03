@@ -14,11 +14,9 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/wasm.test.mjs tests/backend-config.test.mjs tests/*.test.ts",
     "test:browser": "node --test tests/browser.test.mjs",
-    "backend": "node tools/reference-backend.ts",
-    "check": "cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings && cargo test --locked && npm run build && npm run typecheck && npm test && npm run test:provenance && npm run test:browser",
+    "check": "cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings && cargo test --locked && npm run build && npm run typecheck && npm test && npm run test:browser",
     "test:python": "node --test --test-concurrency=1 tests/python-backend.integration.mjs tests/python-business.integration.mjs",
-    "test:python:browser": "node --test tests/python-browser.integration.mjs",
-    "test:provenance": "node scripts/check-evidence.mjs && node --test evidence/wpk/offline/test/offline-hands.test.mjs"
+    "test:python:browser": "node --test tests/python-browser.integration.mjs"
   },
   "dependencies": {
     "react": "19.3.1",

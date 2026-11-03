@@ -175,7 +175,7 @@ function RecommendationView({ recommendation, connected }: { recommendation?: Re
     <p className="help">第 {recommendation.hand_id!.split(':')[1]} 手 · 按策略频率抽取一次建议</p>
     <ul className="events">{recommendation.actions.map(a => <li key={a.label}>{actionNames[a.action]} {amount(a)}
       <small>策略频率 {(a.probability * 100).toFixed(1)}%</small></li>)}</ul>
-    <p className="notice">{recommendation.pr ? 'Pr1.0' : '试运行策略'}：计算两手视野，频率不是胜率；策略质量仍待实局验收。
+    <p className="notice">{recommendation.pr ? 'Pre1.0' : '试运行策略'}：计算两手视野，频率不是胜率；策略质量仍待实局验收。
       {recommendation.model!.opponent_adaptation ? '本次已采用通过抽样比较的画像调整。' : '本次使用自博弈基线；画像尚未达到本局调整条件。'}</p>
     <details><summary>模型来源</summary>
       <p className="help">{recommendation.model!.source === 'profile_search' ? '画像条件搜索 · 25% 调整' : recommendation.model!.source === 'pluribus_search' ? 'Pluribus 限时搜索' : 'Pluribus 自博弈策略'} · 累计 {recommendation.model!.iterations} 轮 · {recommendation.model!.version.slice(0, 12)}</p>

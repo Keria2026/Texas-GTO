@@ -7,7 +7,7 @@ import { resolve, join, dirname } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { chromium } from 'playwright';
 import { WebSocketServer } from 'ws';
-import { startBackend } from '../tools/reference-backend.ts';
+import { startBackend } from './reference-backend.ts';
 const manifest = JSON.parse(await readFile('dist/manifest.json', 'utf8'));
 
 async function until(check, timeout = 15000) {

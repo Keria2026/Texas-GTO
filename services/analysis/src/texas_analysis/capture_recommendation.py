@@ -285,7 +285,7 @@ def recommend(
     }
     if pr_context is not None:
         result["pr"] = {
-            "release": "Pr1.0",
+            "release": "Pre1.0",
             "search_root": "street_start",
             "target_depth": None,
             "opponent_version": opponent_model["version"] if opponent_model else None,

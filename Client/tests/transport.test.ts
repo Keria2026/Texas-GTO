@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import WS, { WebSocketServer } from 'ws';
 import { database, until } from './helpers.ts';
 import { ResearchSocket } from '../extension/transport.ts';
-import { startBackend } from '../tools/reference-backend.ts';
+import { startBackend } from './reference-backend.ts';
 import { SCHEMA } from '../extension/model.ts';
 
 const origin = `chrome-extension://${'a'.repeat(32)}`;
