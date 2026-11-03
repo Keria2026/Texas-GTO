@@ -221,3 +221,88 @@ def test_only_actual_hero_prior_policy_is_frozen_and_published_baseline_is_retai
     other, _, _ = root._sample(Random(123))
     assert other.underlying.table.hand.state.hole_cards[hero] != cards
     assert fixed(SearchState(other), (player, "different-private-hand"), actions) is None
+
+
+@pytest.mark.parametrize("cached_pair", [False, True])
+def test_previous_average_keeps_private_overrides_without_repeating_blueprint_reads(cached_pair):
+    model, actual, history = observed_prefix(flop=True)
+    entries = prefix_policy(model, actual, history).entries
+    first, observed = history[0]
+    player = model.actor(first)
+    hand = first.underlying.table.hand.state
+    physical = first.underlying.table.participants[hand.to_act]
+    cards = tuple(sorted(hand.hole_cards[hand.to_act]))
+    actions = tuple(model.legal_actions(first))
+    average = {}
+    if cached_pair:
+        average[
+            player,
+            DepthLimitedGame.root_information_key(model.search_information_key(first, player)),
+        ] = PolicyEntry(
+            actions, tuple(0 if a == observed else 1 / (len(actions) - 1) for a in actions)
+        )
+    record = {
+        "street": 0,
+        "root_history": 0,
+        "current": TabularPolicy(missing="error"),
+        "average": TabularPolicy(average, missing="error"),
+    }
+    policy = SyntheticPolicy(model, entries)
+    root = MushroomStreetRoot(
+        model, strip_private(actual), policy, budget=TraversalBudget(100000), previous=(record,)
+    )
+    assert policy.lookups == len(entries)
+    reference = MushroomStreetRoot(
+        model,
+        strip_private(actual),
+        SyntheticPolicy(model, entries),
+        budget=TraversalBudget(100000),
+    )
+    if cached_pair:
+        reference._likelihoods[physical][cards] = float("-inf")
+    assert root._likelihoods == reference._likelihoods
+
+
+def test_first_hand_hero_constraints_never_freeze_the_next_hand(monkeypatch):
+    import texas_strategy.mushroom_belief as belief
+    from texas_game_core.cards import DECK
+
+    model, first, _ = observed_prefix()
+    first_hero = model.transition(first, "call")
+    hero = first_hero.underlying.table.hand.state.to_act
+    player = model.actor(first_hero)
+    cards = tuple(sorted(first_hero.underlying.table.hand.state.hole_cards[hero]))
+    target = model.transition(first_hero, "call")
+    target = model.transition(target, "raise_min")
+    while model.actor(target) != player:
+        target = model.transition(target, "call")
+    root = MushroomStreetRoot(
+        model, strip_private(target), SyntheticPolicy(model, {}), budget=TraversalBudget()
+    )
+    monkeypatch.setattr(belief, "solve_generated_subgame", lambda *a, **kw: kw["fixed_policy"])
+    fixed = root.solve(hero, cards)
+    future = first
+    depth = 0
+    while future.underlying.table.hand_number == 1:
+        future = model.transition(future, "fold")
+        depth += 1
+    while model.actor(future) == -1:
+        hand = future.underlying.table.hand.state
+        recipient = hand.pending_deal[0]
+        used = {card for pair in hand.hole_cards for card in pair}
+        card = (
+            cards[len(hand.hole_cards[recipient])]
+            if recipient == hero
+            else next(card for card in DECK if card not in used and card not in cards)
+        )
+        future = model.transition(future, f"deal:{card}")
+    assert future.underlying.table.hand_number == 2 and model.actor(future) == player
+    assert tuple(sorted(future.underlying.table.hand.state.hole_cards[hero])) == cards
+    assert (
+        fixed(
+            SearchState(future, depth=depth),
+            (player, "next-hand"),
+            tuple(model.legal_actions(future)),
+        )
+        is None
+    )

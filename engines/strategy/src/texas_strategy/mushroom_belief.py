@@ -132,7 +132,7 @@ class MushroomFirstHandRoot:
     def historical_entry(self, player, physical, cards, state, key, actions):
         return self._policy.lookup(player, key)
 
-    def likelihood_cache_key(self, key, cards):
+    def likelihood_cache_key(self, key, cards, street):
         return key
 
     def _check(self):
@@ -190,7 +190,7 @@ class MushroomFirstHandRoot:
                     actions=labels,
                     legal_actions=mapping,
                 )
-                cache_key = self.likelihood_cache_key(key, cards)
+                cache_key = self.likelihood_cache_key(key, cards, current.street)
                 if cache_key not in probabilities:
                     entry = self.historical_entry(
                         player, physical, cards, current, key, tuple(mapping)
@@ -339,6 +339,9 @@ class MushroomStreetRoot(MushroomFirstHandRoot):
         public.validate_state(public_state)
         current = public.initial_state()
         self.previous = tuple(previous)
+        self._average_streets = {r["street"] for r in self.previous if r["average"].entries}
+        self._history_public_keys = {}
+        self._history_blueprint = {}
         self.target_state = public_state
         for event in (*public_state.history, None):
             while public.actor(current) == -1:
@@ -373,17 +376,26 @@ class MushroomStreetRoot(MushroomFirstHandRoot):
                     return entry
         return None
 
-    def likelihood_cache_key(self, key, cards):
-        return (key, cards) if self.previous else key
+    def likelihood_cache_key(self, key, cards, street):
+        return (key, cards) if street in self._average_streets else key
 
     def historical_entry(self, player, physical, cards, state, key, actions):
-        info = mushroom_information_key(physical, (), cards, self.public_key_for(state))
-        entry = self._previous_entry(player, info, state.street, len(state.history), "average")
-        if entry is not None:
-            return entry
-        entry = self._policy.lookup(player, key)
-        adapt = getattr(self._policy, "public_entry", None)
-        return adapt(entry, physical, state, actions) if entry is not None and adapt else entry
+        if state.street in self._average_streets:
+            if state not in self._history_public_keys:
+                self._history_public_keys[state] = self.public_key_for(state)
+            info = mushroom_information_key(physical, (), cards, self._history_public_keys[state])
+            entry = self._previous_entry(player, info, state.street, len(state.history), "average")
+            if entry is not None:
+                return entry
+        # Exact-hand search averages stay separate; only the pinned blueprint may share a bucket.
+        cache_key = player, state, key
+        if cache_key not in self._history_blueprint:
+            entry = self._policy.lookup(player, key)
+            adapt = getattr(self._policy, "public_entry", None)
+            self._history_blueprint[cache_key] = (
+                adapt(entry, physical, state, actions) if entry is not None and adapt else entry
+            )
+        return self._history_blueprint[cache_key]
 
     def solve(
         self,
@@ -416,6 +428,7 @@ class MushroomStreetRoot(MushroomFirstHandRoot):
             hand = table.hand.state
             if (
                 key[0] == player
+                and table.hand_number == self._opening.hand_number
                 and tuple(sorted(hand.hole_cards[table.participants.index(hero_seat)])) == hero_pair
                 and len(hand.history) < len(self.target_state.history)
                 and (hand.history == self.target_state.history[: len(hand.history)])
