@@ -35,7 +35,7 @@ def add_event(events, kind, data, *, hand=None):
         events[-1]["hand_id"] = f"table-1:{hand}"
 
 
-def opening_events(*, stacks=(800,) * 4, hand=1, source="replay-source"):
+def opening_events(*, stacks=(800,) * 4, hand=1, source="replay-source", ante=0):
     """A complete synthetic pre-fee/forced-bet opening, reusable by store tests."""
     events = [
         {
@@ -53,14 +53,18 @@ def opening_events(*, stacks=(800,) * 4, hand=1, source="replay-source"):
     ]
     for i, player in enumerate(PLAYERS):
         add_action(events, player, "PAY_MUSHROOM", 40 if i == 1 else 20, round="CLEAN")
-    for player, action, amount in zip(
-        PLAYERS[1:], ("SMALL_BLIND", "BIG_BLIND", "THIRD_BLIND"), (2, 4, 8), strict=True
+    cash = [stack - fee for stack, fee in zip(stacks, (20, 40, 20, 20), strict=True)]
+    if ante:
+        for i, player in enumerate(PLAYERS):
+            paid = min(ante, cash[i])
+            add_action(events, player, "ANTE", paid, round="CLEAN")
+            cash[i] -= paid
+    for i, (player, action, amount) in enumerate(
+        zip(PLAYERS[1:], ("SMALL_BLIND", "BIG_BLIND", "THIRD_BLIND"), (2, 4, 8), strict=True), 1
     ):
+        amount = min(amount, cash[i])
         add_action(events, player, action, amount, total=amount, round="BET_BLIND")
-    cash = tuple(
-        stack - fee - forced
-        for stack, fee, forced in zip(stacks, (20, 40, 20, 20), (0, 2, 4, 8), strict=True)
-    )
+        cash[i] -= amount
     add_snapshot(events, cash, actor="hero", call=8)
     return events
 
@@ -230,6 +234,10 @@ def test_wagering_and_payout_cash_never_become_the_same_public_state():
     [
         (lambda e: e[0]["data"].update(history_complete=False), "incomplete_observed_history"),
         (lambda e: e[1]["data"].update(amount_delta=21), "unsupported_mushroom_fee"),
+        (
+            lambda e: e[5]["data"].update(action="ANTE", amount_delta=4, amount_to=None),
+            "incomplete_antes",
+        ),
         (lambda e: e[7]["data"].update(amount_delta=16), "unsupported_forced_bets"),
         (lambda e: e[-1]["data"]["players"][0].update(stack=None), "missing_opening_stacks"),
         (

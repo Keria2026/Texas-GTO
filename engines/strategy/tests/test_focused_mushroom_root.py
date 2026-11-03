@@ -165,6 +165,9 @@ def test_targeted_eight_player_search_returns_exact_hero_key_with_other_hands_pr
     )
     assert result.information_key == model.search_information_key(actual, model.actor(actual))
     assert result.actions == model.legal_actions(actual)
+    key = result.player, result.subgame.root_information_key(result.information_key)
+    assert result.policy.lookup(*key).probabilities == result.probabilities
+    assert result.average_policy.lookup(*key) is not None
     assert sum(result.probabilities) == pytest.approx(1)
     assert result.diagnostics.completed_iterations == 6 and result.blueprint_fallback_queries == 0
     assert result.subgame.root_draws == 48

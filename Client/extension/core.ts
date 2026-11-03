@@ -12,6 +12,7 @@ export interface Core {
 }
 export interface BusinessEventInput { kind: string; table_id: string | null; hand_id: string | null; data: Record<string, unknown> }
 export interface Reduction { ok: boolean; error?: string; events: BusinessEventInput[]; checkpoint: Record<string, unknown> }
+export class WpkValidationError extends Error {}
 export function wpkCall(core: Core, input: unknown): Reduction {
   const bytes = new TextEncoder().encode(JSON.stringify(input));
   if (bytes.length > 256 * 1024) throw Error('WPK input exceeds limit');
@@ -22,7 +23,7 @@ export function wpkCall(core: Core, input: unknown): Reduction {
     const length = core.process_wpk();
     if (length > 256 * 1024) throw Error('WPK output exceeds limit');
     const result = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array(core.memory.buffer, core.output_ptr(), length))) as Reduction;
-    if (!result.ok) throw Error(result.error ?? 'WPK validation failed');
+    if (!result.ok) throw new WpkValidationError(result.error ?? 'WPK validation failed');
     return result;
   } finally { core.clear_buffers(); }
 }

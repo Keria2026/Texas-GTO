@@ -646,7 +646,13 @@ pub fn reduce(m: Message, mut s: State) -> Result<(Vec<Event>, State)> {
     let first = s.table_id.is_none();
     let previous_view = view(&s);
     let old_turn = s.turn.clone();
-    let number = m.deal_hand.unwrap_or(v.hand_number);
+    // Visible state can advance before the deal packet; keep its fees in the pending hand.
+    let number =
+        if s.pending && s.table_id.as_ref() == Some(&v.table_id) && m.event != "WP_dealNotify" {
+            s.hand_number.unwrap_or(v.hand_number)
+        } else {
+            m.deal_hand.unwrap_or(v.hand_number)
+        };
     ensure(hand(number), "Invalid deal hand")?;
     let changed = s.table_id.as_ref() != Some(&v.table_id) || s.hand_number != Some(number);
     let stale =

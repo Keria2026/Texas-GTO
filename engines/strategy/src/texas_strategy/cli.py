@@ -66,6 +66,9 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--small-blind", type=int, default=1)
         command.add_argument("--big-blind", type=int, default=2)
         command.add_argument("--straddle", type=int, help="Fully funded live straddle left of BB")
+        command.add_argument(
+            "--ante", type=_nonnegative, default=0, help="Per-player ante before blinds"
+        )
         command.add_argument("--button", type=int, default=0)
         command.add_argument(
             "--bet-fractions", default="0.5,1.0", help="Hold'em pot fractions; use 'none' for none"
@@ -134,7 +137,7 @@ def _game(args: argparse.Namespace) -> Any:
 
             if args.players != 8 or args.stacks is not None or args.button != 0:
                 raise ValueError("Population requires eight model seats and its declared openings")
-            game = MushroomPopulationGame.default(horizon=args.session_hands or 2)
+            game = MushroomPopulationGame.default(horizon=args.session_hands or 2, ante=args.ante)
             if args.command == "resume":
                 from texas_strategy.blueprint import DEFAULT_MAX_BYTES, _read
 
@@ -142,9 +145,9 @@ def _game(args: argparse.Namespace) -> Any:
                     args.from_checkpoint, kind="checkpoint", max_bytes=DEFAULT_MAX_BYTES
                 )
                 saved = MushroomPopulationGame.from_context(document.get("training_context"))
-                if saved.horizon != game.horizon:
+                if saved.horizon != game.horizon or saved.ante != game.ante:
                     raise ValueError(
-                        "Population checkpoint horizon does not match the requested game"
+                        "Population checkpoint horizon or ante does not match the requested game"
                     )
                 return saved
             return game
@@ -159,6 +162,7 @@ def _game(args: argparse.Namespace) -> Any:
             stacks,
             button=args.button,
             horizon=args.session_hands if args.session_hands is not None else 2,
+            ante=args.ante,
         )
         if args.abstraction == "mushroom_context":
             from texas_strategy.mushroom_abstraction import MushroomContextGame
@@ -170,6 +174,8 @@ def _game(args: argparse.Namespace) -> Any:
     if args.session_hands is not None:
         raise ValueError("--session-hands applies only to mushroom")
     if args.game != "holdem":
+        if args.ante:
+            raise ValueError("--ante is available only for Hold'em or mushroom")
         if args.abstraction != "none":
             raise ValueError("Suit canonicalization is available only for Hold'em")
         if args.stacks is not None:
@@ -199,6 +205,7 @@ def _game(args: argparse.Namespace) -> Any:
         small_blind=args.small_blind,
         big_blind=args.big_blind,
         straddle=args.straddle,
+        ante=args.ante,
         button=args.button,
         bet_fractions=fractions,
     )

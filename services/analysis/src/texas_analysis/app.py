@@ -2,22 +2,26 @@
 
 import asyncio
 import hmac
+import logging
 import os
 import re
+import sqlite3
 from contextlib import asynccontextmanager, nullcontext
 from dataclasses import asdict
 from pathlib import Path
-from threading import BoundedSemaphore
+from threading import BoundedSemaphore, Event
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from texas_game_core.cards import estimate_equity
 from texas_game_core.hand_analysis import analyze_hand_strength
 from texas_strategy.adaptation import adapt_strategy
+from texas_strategy.evaluation import CancellationError
 from texas_strategy.search import ContinuationPolicy
 
 from .core_training import CoreTraining
@@ -47,6 +51,11 @@ DEFAULT_ORIGINS = (
 )
 EXTENSION_ORIGIN = r"chrome-extension://[a-p]{32}"
 MAX_BODY_BYTES = 256 * 1024
+
+
+class RollbackBehavior(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
 class LocalBoundary:
@@ -183,6 +192,32 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app):
         core.start()
+        learning_stop = Event()
+        learning_done = asyncio.Event()
+
+        async def learn():
+            while not learning_stop.is_set():
+                try:
+                    if (directory / "capture.sqlite3").is_file():
+                        store = await asyncio.to_thread(get_capture_store)
+                        await asyncio.to_thread(store.train_behavior, learning_stop.is_set)
+                        await asyncio.to_thread(
+                            store.collect_training_openings, learning_stop.is_set
+                        )
+                    capture_resources.pop("learning_error", None)
+                except CancellationError:
+                    break
+                except (OSError, ValueError, sqlite3.Error) as error:
+                    capture_resources["learning_error"] = type(error).__name__
+                    logging.getLogger(__name__).exception(
+                        "Capture learners failed; active models retained"
+                    )
+                try:
+                    await asyncio.wait_for(learning_done.wait(), timeout=30)
+                except TimeoutError:
+                    pass
+
+        learner = asyncio.create_task(learn())
         supervisor = asyncio.create_task(
             core.supervise(
                 lambda: "manager" in resources and resources["manager"].has_active_jobs()
@@ -191,14 +226,17 @@ def create_app(
         try:
             yield
         finally:
+            learning_stop.set()
+            learning_done.set()
+            await learner
             await asyncio.to_thread(core.close)
             await supervisor
             if resources:
                 resources["manager"].close()
 
     app = FastAPI(
-        title="Texas GTO Offline Research",
-        version="0.1.0",
+        title="Texas GTO Pre1.0",
+        version="0.8.3",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -253,6 +291,25 @@ def create_app(
     @app.get("/v1/core-training", response_model=CoreTrainingResponse)
     def core_training():
         return core.status()
+
+    @app.get("/v1/capture/learning")
+    def learning(request: Request):
+        origin = request.headers.get("origin")
+        if origin is None:
+            raise HTTPException(400, "An Origin is required for capture learning")
+        return {
+            **get_capture_store().learning_status(origin),
+            "error": capture_resources.get("learning_error"),
+        }
+
+    @app.post("/v1/capture/learning/rollback")
+    def rollback_learning(request: Request, body: RollbackBehavior):
+        origin = request.headers.get("origin")
+        if origin is None:
+            raise HTTPException(400, "An Origin is required for capture learning")
+        return {
+            "active_version": get_capture_store().rollback_behavior(origin, body.expected_version)
+        }
 
     @app.post("/v1/sessions", response_model=SessionResponse)
     def create_session(request: CreateSession):

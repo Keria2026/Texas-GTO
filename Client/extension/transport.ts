@@ -1,4 +1,4 @@
-import { parseRecommendation, RECOMMENDATIONS_CAPABILITY } from './recommendation.ts';
+import { parseRecommendation, RECOMMENDATIONS_CAPABILITY, SEARCH_CAPABILITY, PR_CAPABILITY } from './recommendation.ts';
 import type { Recommendation } from './recommendation.ts';
 import { parseCaptureState, CAPTURE_STATE_CAPABILITY } from './capture-state.ts';
 import type { CaptureState } from './capture-state.ts';
@@ -63,7 +63,8 @@ export class ResearchSocket {
     clearTimeout(this.deadline); clearInterval(this.heartbeat);
   }
   open(): void {
-    if (!this.enabled) return;
+    if (!this.enabled || this.socket?.readyState === WebSocket.CONNECTING || this.socket?.readyState === WebSocket.OPEN) return;
+    clearTimeout(this.retryTimer);
     const generation = ++this.generation;
     const ws = new WebSocket(this.url);
     this.socket = ws; this.ready = false; this.flight = undefined;
@@ -73,7 +74,7 @@ export class ResearchSocket {
     this.deadline = setTimeout(() => ws.close(), 5000);
     ws.onopen = () => {
       if (generation !== this.generation) return;
-      ws.send(JSON.stringify({ type: 'auth', ...(this.token ? { token: this.token } : {}), capabilities: [STATUS_CAPABILITY, CAPTURE_STATE_CAPABILITY, CAPTURE_PROFILES_CAPABILITY, RECOMMENDATIONS_CAPABILITY] }));
+      ws.send(JSON.stringify({ type: 'auth', ...(this.token ? { token: this.token } : {}), capabilities: [STATUS_CAPABILITY, CAPTURE_STATE_CAPABILITY, CAPTURE_PROFILES_CAPABILITY, RECOMMENDATIONS_CAPABILITY, SEARCH_CAPABILITY, PR_CAPABILITY] }));
     };
     let received = Promise.resolve();
     ws.onmessage = event => {
@@ -144,6 +145,8 @@ export class ResearchSocket {
         } else if (message.type === 'capture.recommendation') {
           if (!this.ready || !this.capabilities.has(RECOMMENDATIONS_CAPABILITY)) throw Error('Unnegotiated recommendation');
           const result = parseRecommendation(message);
+          if (result.model?.search && !this.capabilities.has(SEARCH_CAPABILITY)) throw Error('Unnegotiated search');
+          if (result.pr && !this.capabilities.has(PR_CAPABILITY)) throw Error('Unnegotiated Pre1.0 recommendation');
           const source = (await this.db.sessions()).find(s => s.id === result.source_id);
           if (generation !== this.generation || ws.readyState !== WebSocket.OPEN) return;
           if (!source || source.stream !== 'business' || sequence(result.through_sequence) > sequence(source.ack)) throw Error('Recommendation is not acknowledged');
@@ -171,6 +174,7 @@ export class ResearchSocket {
     ws.onclose = event => {
       if (generation !== this.generation) return;
       this.generation++; // Retire asynchronous messages belonging to the closed connection.
+      this.socket = undefined;
       this.clearTimers(); this.ready = false; this.flight = undefined; this.serverStatus = undefined; this.captureStates.clear(); this.captureProfiles.clear(); this.recommendations.clear(); this.capabilities.clear();
       if (!this.enabled) return;
       if ([1008, 4401, 4403].includes(event.code)) {

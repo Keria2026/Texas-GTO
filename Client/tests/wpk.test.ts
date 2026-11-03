@@ -29,6 +29,35 @@ test('page observer preserves original return/throw, polls async decoded cards a
   assert.deepEqual(normalize(f.messages).checkpoint.hero_cards, ['As', 'Kd']);
   f.scope.__tgtoWpkBridge.stop(); assert.equal(f.fixture.client._dispatchMessageToCC, f.fixture.original);
 });
+test('an early visible hand number preserves the observed start and pending fees until dealing', () => {
+  const f = fixture();
+  f.fixture.emit('WP_bankerChangeNotify');
+  f.fixture.game.currentBoutNum = 2;
+  f.fixture.emit('WP_actionNotify', { actionList: f.fixture.game.sitUserList.map((p: any, i: number) => ({
+    actionId: 2001 + i, userId: p.userId, actionType: 'PAY_MUSHROOM', actionScore: 20, seatScore: 0, round: 'CLEAN',
+  })) });
+  f.timers[0]();
+  f.fixture.emit('WP_dealNotify', { currentBoutNum: 2 });
+  const reduced = normalize(f.messages);
+  assert.equal(reduced.checkpoint.history_complete, true);
+  const start = reduced.events.findIndex(e => e.kind === 'hand_started');
+  assert.equal(reduced.events[start].data.history_complete, true);
+  assert.deepEqual(reduced.events.filter(e => e.kind === 'action_confirmed').map(e => e.hand_id),
+    ['table-1:2', 'table-1:2', 'table-1:2']);
+  assert.ok(reduced.events.slice(0, start).every(e => e.kind !== 'action_confirmed'));
+});
+test('a temporarily empty seat list keeps observing, but a different account still stops', () => {
+  const f = fixture(); const people = f.fixture.game.sitUserList;
+  f.fixture.game.sitUserList = []; f.timers[0]();
+  assert.equal(f.messages.at(-1).status, 'waiting_seat');
+  assert.ok(f.scope.__tgtoWpkBridge);
+  f.fixture.game.sitUserList = people; f.timers[0]();
+  assert.equal(f.messages.filter(m => m.status).at(-1).status, 'ready');
+  assert.ok(f.scope.__tgtoWpkBridge);
+  f.scope.CurrentUserInfo.user.userId = 123456; f.timers[0]();
+  assert.equal(f.messages.at(-1).status, 'adapter_error');
+  assert.equal(f.scope.__tgtoWpkBridge, undefined);
+});
 test('repeated actions dedupe, enrichment is explicit and conflicting/unknown actions fail', () => {
   const f = fixture(); f.fixture.emit('WP_actionNotify', { actionList: [{ actionId: 1, userId: f.fixture.own, actionType: 'CALL', actionScore: 8, seatScore: 8 }] });
   const dto = f.messages.at(-1).dto; const first = normalize(f.messages);
@@ -69,23 +98,34 @@ test('missing pair stays pending, missing amounts/differences are unresolved, co
   assert.throws(() => wpkCall(core, { op: 'reduce', message: { ...log, log: { ...log.log, players: log.log.players.map((p: any, i: number) => i ? p : { ...p, net_chips: 99 }) } }, checkpoint: done.checkpoint }), /immutable/);
 });
 
-test('only the bound main-world context is accepted; invalid business DTO stops business only', async () => {
+test('only the bound main-world context is accepted; a rejected DTO waits for the next observed hand', async () => {
   const db = await database(); const network = await db.create(7, false);
   const api = { async attach() {}, async detach() {}, async sendCommand(_t: Target, method: string) {
     return method === 'Page.getFrameTree' ? { frameTree: { frame: { id: 'main' } } } : {};
   } };
   const adapter = new WpkAdapter(api, db, core, () => {}); await adapter.start(network);
   const source = adapter.source!.id;
-  const dto = fixture().messages.find(m => m.dto).dto;
+  const f = fixture(); const dto = f.messages.find(m => m.dto).dto;
   await adapter.handle({ tabId: 7 }, 'Runtime.executionContextCreated', { context: { id: 11, auxData: { isDefault: true, frameId: 'main' } } });
   await adapter.handle({ tabId: 7 }, 'Runtime.bindingCalled', { name: adapter.binding, executionContextId: 99, payload: 'invalid' });
   assert.equal((await db.records(source)).length, 1);
   await adapter.handle({ tabId: 7 }, 'Runtime.bindingCalled', { name: adapter.binding, executionContextId: 11, payload: JSON.stringify({ dto }) });
   assert.equal(adapter.status, 'ready');
   await adapter.handle({ tabId: 7 }, 'Runtime.bindingCalled', { name: adapter.binding, executionContextId: 11, payload: JSON.stringify({ dto: { ...dto, credential: 'forbidden' } }) });
-  assert.equal(adapter.status, 'interrupted');
+  assert.equal(adapter.status, 'waiting_hand');
   assert.equal((await db.sessions()).find(s => s.id === network.id)!.state, 'active');
-  assert.equal((await db.sessions()).find(s => s.id === source)!.state, 'interrupted'); db.db.close();
+  assert.equal((await db.sessions()).find(s => s.id === source)!.state, 'active');
+  assert.equal(adapter.checkpoint?.history_complete, false);
+  const pausedCount = (await db.records(source)).length;
+  await adapter.handle({ tabId: 7 }, 'Runtime.bindingCalled', { name: adapter.binding, executionContextId: 11, payload: JSON.stringify({ dto }) });
+  assert.equal((await db.records(source)).length, pausedCount);
+  const before = f.messages.length;
+  f.fixture.emit('WP_bankerChangeNotify'); f.fixture.emit('WP_dealNotify', { currentBoutNum: 2 });
+  for (const message of f.messages.slice(before).filter(m => m.dto))
+    await adapter.handle({ tabId: 7 }, 'Runtime.bindingCalled', { name: adapter.binding, executionContextId: 11, payload: JSON.stringify(message) });
+  assert.equal(adapter.source!.id, source); assert.equal(adapter.status, 'ready');
+  assert.equal(adapter.checkpoint?.history_complete, true);
+  assert.equal(adapter.checkpoint?.hand_number, 2); db.db.close();
 });
 
 test('failed multi-event transaction rolls back the business checkpoint and all emitted events', async () => {
@@ -94,6 +134,21 @@ test('failed multi-event transaction rolls back the business checkpoint and all 
   await assert.rejects(db.appendBusiness(source.id, [gap, gap], { hand_number: 99 }), /limit/);
   const state = (await db.sessions()).find(s => s.id === source.id)!;
   assert.equal(state.last, '0'); assert.equal(state.checkpoint, undefined); assert.equal((await db.records(source.id)).length, 0); db.db.close();
+});
+test('storage failure still stops capture instead of claiming to wait for a new hand', async () => {
+  const db = await database(); const network = await db.create(7, false);
+  const api = { async attach() {}, async detach() {}, async sendCommand(_t: Target, method: string) {
+    return method === 'Page.getFrameTree' ? { frameTree: { frame: { id: 'main' } } } : {};
+  } };
+  const adapter = new WpkAdapter(api, db, core, () => {}); await adapter.start(network);
+  const source = adapter.source!.id;
+  await adapter.handle({ tabId: 7 }, 'Runtime.executionContextCreated', { context: { id: 11, auxData: { isDefault: true, frameId: 'main' } } });
+  db.appendBusiness = async () => { throw Error('synthetic storage failure'); };
+  const dto = fixture().messages.find(m => m.dto).dto;
+  await adapter.handle({ tabId: 7 }, 'Runtime.bindingCalled', { name: adapter.binding, executionContextId: 11, payload: JSON.stringify({ dto }) });
+  assert.equal(adapter.status, 'interrupted'); assert.equal(adapter.source, undefined);
+  assert.equal((await db.sessions()).find(s => s.id === source)!.state, 'interrupted');
+  assert.equal((await db.records(source)).length, 1); db.db.close();
 });
 test('business state and events commit together; independent stream survives reopen and ACK', async () => {
   const db = await database(); const net = await db.create(1, false), business = await db.create(1, false, net.id);

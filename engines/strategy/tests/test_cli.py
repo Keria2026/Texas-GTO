@@ -139,7 +139,7 @@ def test_mushroom_cli_runs_the_session_model_and_preserves_the_horizon_in_artifa
     assert report["training"]["completed_iterations"] == 1
     assert report["metadata"]["game_id"] == "mushroom"
     assert report["metadata"]["pluribus"]["strategy_interval"] == 1
-    assert report["metadata"]["pluribus"]["average_mode"] == "sampled_uniform"
+    assert report["metadata"]["pluribus"]["average_mode"] == "sampled_mixture"
     assert report["metadata"]["pluribus"]["average_samples"] == 16
     assert any("horizon" in warning for warning in report["warnings"])
     assert main(["resume", *config, "--from-checkpoint", str(checkpoint)]) == 0

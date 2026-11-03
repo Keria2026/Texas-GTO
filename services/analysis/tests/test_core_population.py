@@ -25,20 +25,29 @@ def test_worker_upgrades_one_core_once_and_restores_frozen_manifest(tmp_path):
     new = _open_core_trainer(tmp_path)
     try:
         assert isinstance(new.game, MushroomPopulationGame)
-        assert new.game.warm_start["source_iterations"] == 0
-        assert new._store._document["metadata"] == before["metadata"]
+        previous = MushroomPopulationGame.from_context(new.game.rule_migration["source_context"])
+        assert previous.warm_start["source_iterations"] == 0
+        assert new.game.ante == 4
+        assert new._store._document["metadata"] == {
+            **before["metadata"],
+            "rules_version": new.game.rules_version,
+        }
         assert new._store._document["rng_state"] == before["rng_state"]
         context = new.game.checkpoint_context
     finally:
         new._store.close()
     backups = list(tmp_path.glob("before-population-*.sqlite3"))
     assert len(backups) == 1 and header(backups[0]) == before
+    ante_backups = list(tmp_path.glob("before-ante-*.sqlite3"))
+    assert len(ante_backups) == 1
+    assert header(ante_backups[0])["metadata"] == before["metadata"]
     resumed = _open_core_trainer(tmp_path)
     try:
         assert resumed.game.checkpoint_context == context
     finally:
         resumed._store.close()
     assert list(tmp_path.glob("before-population-*.sqlite3")) == backups
+    assert list(tmp_path.glob("before-ante-*.sqlite3")) == ante_backups
 
 
 @pytest.mark.parametrize("population", [False, True])
@@ -51,7 +60,9 @@ def test_json_import_preserves_original_artifact_and_distribution(tmp_path, popu
     try:
         assert isinstance(trainer.game, MushroomPopulationGame)
         assert (
-            trainer.game.warm_start is None if population else trainer.game.warm_start is not None
+            trainer.game.rule_migration is None
+            if population
+            else trainer.game.rule_migration is not None
         )
         assert trainer.seed == 17
         assert trainer.iterations == 0
@@ -103,3 +114,51 @@ def test_failed_backup_leaves_fixed_opening_context_untouched(tmp_path, monkeypa
 def test_population_config_does_not_silently_ignore_fixed_opening_overrides(change):
     with pytest.raises(ValueError, match="Population"):
         GameConfig.model_validate({**CORE_GAME.model_dump(), **change})
+
+
+def test_uniform_core_proposal_is_backed_up_and_upgraded_exactly_once(tmp_path):
+    game = make_game(CORE_GAME)
+    checkpoint = tmp_path / "checkpoint.json"
+    Trainer(
+        game,
+        algorithm="pluribus",
+        seed=42,
+        pluribus={"average_mode": "sampled_uniform", "average_samples": 16},
+    ).save_checkpoint(checkpoint)
+    previous = open_trainer(game, tmp_path / "training.sqlite3", checkpoint=checkpoint)
+    before = previous._store._document
+    previous._store.close()
+    upgraded = _open_core_trainer(tmp_path)
+    try:
+        assert upgraded.pluribus.average_mode == "sampled_mixture"
+        assert upgraded.pluribus.mixture_from == 1
+        assert upgraded._store._document["rng_state"] == before["rng_state"]
+        assert upgraded._store._document["training_context"] == before["training_context"]
+        after = upgraded._store._document
+    finally:
+        upgraded._store.close()
+    backups = list(tmp_path.glob("before-mixture-*.sqlite3"))
+    assert len(backups) == 1 and header(backups[0]) == before
+    resumed = _open_core_trainer(tmp_path)
+    resumed._store.close()
+    assert header(tmp_path / "training.sqlite3") == after
+    assert list(tmp_path.glob("before-mixture-*.sqlite3")) == backups
+
+
+def test_failed_mixture_backup_retains_original_uniform_core(tmp_path, monkeypatch):
+    game = make_game(CORE_GAME)
+    checkpoint = tmp_path / "checkpoint.json"
+    Trainer(
+        game, algorithm="pluribus", pluribus={"average_mode": "sampled_uniform"}
+    ).save_checkpoint(checkpoint)
+    previous = open_trainer(game, tmp_path / "training.sqlite3", checkpoint=checkpoint)
+    before = previous._store._document
+    previous._store.close()
+
+    def fail(*_):
+        raise OSError("synthetic mixture backup failure")
+
+    monkeypatch.setattr(TrainingStore, "backup", fail)
+    with pytest.raises(OSError, match="mixture backup"):
+        _open_core_trainer(tmp_path)
+    assert header(tmp_path / "training.sqlite3") == before

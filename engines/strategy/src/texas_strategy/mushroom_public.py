@@ -144,6 +144,7 @@ def build_public_query(
         or hand_game.small_blind != 2
         or hand_game.big_blind != 4
         or hand_game.straddle != 8
+        or hand_game.ante != model.base_game.ante
         or hand_game.bet_fractions != (0.5, 1.0)
     ):
         raise ValueError("Public hand rules do not match the mushroom model")
@@ -200,6 +201,7 @@ def build_public_query(
         pool=pool,
         actions=actions,
         legal_actions=mapping,
+        ante=model.base_game.ante,
     )
     return PublicMushroomQuery(
         (hero_seat - policy_anchor) % count,

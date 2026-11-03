@@ -123,12 +123,14 @@ def test_node_abort_is_atomic_and_rewinds_rng(algorithm):
     baseline.train(20)
     interrupted.train(20)
     before = interrupted.average_policy().entries
+    current_before = interrupted.current_policy().entries
     rng = interrupted._rng.getstate()
     stopped = interrupted.train(10, max_nodes=2)
     assert stopped.stop_reason == "node_budget"
     assert stopped.nodes == 2
     assert stopped.completed_iterations == 0
     assert interrupted.average_policy().entries == before
+    assert interrupted.current_policy().entries == current_before
     assert interrupted._rng.getstate() == rng
     baseline.train(10)
     interrupted.train(10)

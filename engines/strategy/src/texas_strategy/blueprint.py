@@ -183,6 +183,7 @@ def _trainer_metadata(trainer: "Trainer") -> dict[str, Any]:
 
     if (
         getattr(trainer, "_uses_root_proposal", False)
+        or getattr(trainer, "fixed_policy", None) is not None
         or getattr(trainer.game, "sample_training_root", None) is not None
     ):
         raise ValueError("Local training-root proposals cannot be persisted as core artifacts")

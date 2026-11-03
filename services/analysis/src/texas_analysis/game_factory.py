@@ -10,11 +10,14 @@ def make_game(config: GameConfig):
         if config.abstraction == "mushroom_population":
             from texas_strategy.mushroom_population import MushroomPopulationGame
 
-            return MushroomPopulationGame.default(horizon=config.session_hands or 2)
+            return MushroomPopulationGame.default(
+                horizon=config.session_hands or 2, ante=config.ante
+            )
         game = MushroomSessionGame(
             config.stacks if config.stacks is not None else (config.stack,) * config.num_players,
             button=config.button,
             horizon=config.session_hands or 2,
+            ante=config.ante,
         )
         if config.abstraction == "mushroom_context":
             from texas_strategy.mushroom_abstraction import MushroomContextGame
@@ -29,6 +32,7 @@ def make_game(config: GameConfig):
             small_blind=config.small_blind,
             big_blind=config.big_blind,
             straddle=config.straddle,
+            ante=config.ante,
             button=config.button,
         )
         if config.abstraction == "suit_canonical":

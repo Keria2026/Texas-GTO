@@ -23,6 +23,7 @@ async function command(message: object): Promise<unknown> {
 }
 const states: Record<string, string> = { ready: '已连接', disconnected: '未连接', connecting: '连接中', retrying: '等待重连', unsupported: '后端不支持', error: '通信错误' };
 function App() {
+  const manifest = chrome.runtime.getManifest();
   const [status, setStatus] = useState<Status>();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -74,7 +75,7 @@ function App() {
   const latest = status?.sessions[0];
   const pending = status?.sessions.reduce((n, s) => n + BigInt(s.last) - BigInt(s.ack), 0n) ?? 0n;
   return <main>
-    <header><h1>TGTO 采集</h1><span className="version">0.6.1 预览</span></header>
+    <header><h1>TGTO 采集</h1><span className="version">{manifest.version_name ?? manifest.version} · {manifest.version}</span></header>
     <p className="intro">逐条记录网络消息，离线保留，确认后完成传输。</p>
     {(error || status?.fault) && <p className="notice" role="alert">{error || status?.fault}</p>}
     <section aria-labelledby="recommendation-title"><h2 id="recommendation-title">八人局行动建议</h2>
@@ -92,12 +93,12 @@ function App() {
         <p className="help">默认保存时间、方向、长度与摘要。原始载荷可能含敏感信息，不会上传后端。</p>
         <div className="actions"><button disabled={busy || !!active || !status.tabs.length} onClick={() => void run({ type: 'start', tabId: Number(tab || status.tabs[0]?.id), raw })}>开始采集</button>
           <button className="secondary" disabled={busy || !active} onClick={() => void run({ type: 'stop' })}>停止采集</button></div>
-        <p className="help">开始之前的消息无法补取。后台重启会恢复此前的采集；中断当手不推荐行动。刷新页面需重新开始采集。</p>
+        <p className="help">中途入桌会等待下一手完整开局；单手校验失败后继续监听下一手。服务断线会自动重连、补传已保存记录。刷新页面需重新开始采集。</p>
       </section>
       <section aria-labelledby="business-title"><h2 id="business-title">牌桌业务数据</h2>
-        <p role="status">{({ ready: '业务适配已就绪', waiting_client: '等待 WPK 客户端加载', waiting_seat: '等待本人入座', interrupted: '业务采集已中断', stopped: '业务采集已停止', inactive: '业务采集未启动' } as Record<string, string>)[status.businessStatus] ?? status.businessStatus}</p>
+        <p role="status">{({ ready: '业务适配已就绪', waiting_client: '等待 WPK 客户端加载', waiting_seat: '等待本人座位恢复', waiting_hand: '本手数据有缺口，继续采集并等待下一手完整开局', interrupted: '业务采集已中断', stopped: '业务采集已停止', inactive: '业务采集未启动' } as Record<string, string>)[status.businessStatus] ?? status.businessStatus}</p>
         {status.business?.error && <p className="notice">{status.business.error}。已记录数据可导出；重新开始采集会创建新会话。</p>}
-        {status.business?.checkpoint && <BusinessView checkpoint={status.business.checkpoint} stale={status.business.state !== 'active'} />}
+        {status.business?.checkpoint && <BusinessView checkpoint={status.business.checkpoint} stale={status.business.state !== 'active' || status.businessStatus !== 'ready'} />}
         {status.business && <>
           <p className="help">业务写入 {status.business.last} 条，后端确认 {status.business.ack} 条。{!status.backendCapabilities.includes('capture_events_v1') && '后端尚未声明业务事件能力，记录保留在本地。'}</p>
           <p className="help">全部业务会话共 {status.businessPending} 条待确认记录。</p>
@@ -148,12 +149,14 @@ function App() {
 }
 const actionNames = { FOLD: '弃牌', CHECK: '过牌', CALL: '跟注', BET: '下注', RAISE: '加注', ALL_IN: '全下' };
 const unavailableReasons: Record<string, string> = {
+  ante_not_supported: '已采到本桌前注，当前策略模型尚未支持这一规则，暂不推荐。',
   not_hero_turn: '等待轮到你行动。', requires_eight_participants: '当前推荐支持八人实际参与的牌局。',
   incomplete_action_history: '本手采集有缺口，等待下一手完整数据。', hero_cards_unavailable: '等待确认你的两张手牌。',
   mushroom_ledger_unavailable: '蘑菇池及缴费归属尚未确认，继续采集结算记录。',
   unmapped_mushroom_owner: '蘑菇池存在尚未对应到座位的缴费权益。',
   observation_expired: '牌局信息已过期，等待新的牌桌状态。', public_state_incomplete: '等待完整的行动、筹码和牌桌快照。',
   strategy_not_trained: '当前节点尚无已训练策略，暂不推荐行动。', model_unavailable: '训练模型尚未就绪。',
+  strategy_feedback_unavailable: '当前局面的训练反馈不足，暂不推荐行动。',
   client_legal_actions_conflict: '牌桌可选行动与规则校验不一致，建议已停止。',
   query_timeout: '本次查询超时，建议已清除。', model_or_state_invalid: '模型或牌局校验失败，暂不推荐行动。',
 };
@@ -172,8 +175,20 @@ function RecommendationView({ recommendation, connected }: { recommendation?: Re
     <p className="help">第 {recommendation.hand_id!.split(':')[1]} 手 · 按策略频率抽取一次建议</p>
     <ul className="events">{recommendation.actions.map(a => <li key={a.label}>{actionNames[a.action]} {amount(a)}
       <small>策略频率 {(a.probability * 100).toFixed(1)}%</small></li>)}</ul>
-    <p className="notice">试运行策略：仅计算两手视野，尚未完成实局质量验收；玩家画像尚未用于调整建议。频率不是胜率。</p>
-    <details><summary>模型来源</summary><p className="help">Pluribus 自博弈策略 · 累计 {recommendation.model!.iterations} 轮 · {recommendation.model!.version.slice(0, 12)}</p></details>
+    <p className="notice">{recommendation.pr ? 'Pre1.0' : '试运行策略'}：计算两手视野，频率不是胜率；策略质量仍待实局验收。
+      {recommendation.model!.opponent_adaptation ? '本次已采用通过抽样比较的画像调整。' : '本次使用自博弈基线；画像尚未达到本局调整条件。'}</p>
+    <details><summary>模型来源</summary>
+      <p className="help">{recommendation.model!.source === 'profile_search' ? '画像条件搜索 · 25% 调整' : recommendation.model!.source === 'pluribus_search' ? 'Pluribus 限时搜索' : 'Pluribus 自博弈策略'} · 累计 {recommendation.model!.iterations} 轮 · {recommendation.model!.version.slice(0, 12)}</p>
+      {recommendation.pr && <p className="help">搜索起点为当前下注轮，完成情况见下方诊断。画像模型：{recommendation.pr.opponent_version?.slice(0, 12) ?? '等待足够的完整牌局及评测通过'}。</p>}
+      {recommendation.pr?.evaluation && <p className="help">独立比较 {recommendation.pr.evaluation.samples} 次，模型内增益 {recommendation.pr.evaluation.delta_points.toFixed(2)} 分，标准误 {recommendation.pr.evaluation.standard_error.toFixed(2)} 分；不代表实局收益保证。</p>}
+      {recommendation.model!.source === 'pluribus_search' && recommendation.warnings.includes('latest_completed_search_policy')
+        && <p className="help">行动策略：最新完整迭代，尚未验证收敛。</p>}
+      {recommendation.model!.search && <p className="help">{recommendation.model!.search.status === 'complete'
+        ? `本次搜索完成 ${recommendation.model!.search.iterations} 轮，耗时 ${recommendation.model!.search.elapsed_ms} 毫秒；不代表已收敛或最优。`
+        : recommendation.model!.search.status === 'coverage_missing' ? '后续策略覆盖不足，本次使用已训练的当前节点策略。'
+          : recommendation.model!.search.status === 'profile_rejected' ? '画像候选的收益证据不足，保持基线建议。'
+            : '搜索未在预算内完成，本次使用已训练的当前节点策略。'}</p>}
+    </details>
   </>;
 }
 

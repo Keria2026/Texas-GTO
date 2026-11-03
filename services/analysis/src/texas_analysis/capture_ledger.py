@@ -6,9 +6,12 @@ entire pool. This proves neither those source rules nor strategy coverage.
 No pre-anchor cash, top-up, private card, or missing opening balance is inferred.
 """
 
+import json
+from collections import deque
 from collections.abc import Mapping, Sequence
 
 from .capture_contract import SAFE, alias, decimal, table
+from .capture_learning import _cutoff
 
 
 def _hand(value):
@@ -109,22 +112,56 @@ def derive_mushroom_ledger(*, hand_id, fees, settlements):
         if number in by_hand:
             raise ValueError("Duplicate settlement hand")
         by_hand[number] = record
-    anchor = None
-    parsed = {}
-    for number, record in sorted(by_hand.items()):
-        if record.get("status") != "reconciled":
-            continue  # Unknown older balances cease to matter after a proven complete award.
-        parsed[number] = _settlement(record)
-        if parsed[number][2]:
-            anchor = number
-            break
-    if anchor is None:
-        raise ValueError("No observed whole-pool award establishes an opening ledger")
-    outstanding, evidence, unknown_reasons = {}, [], set()
-    expected = anchor
-    for number, record in sorted(by_hand.items()):
-        if number < anchor:
-            continue
+    return _derive_ordered(scope, current, fees, sorted(by_hand.items()))
+
+
+def derive_recorded_mushroom_ledger(db, *, origin, source, through, hand_id, fees, check=None):
+    """Replay immutable outcomes at this source prefix, independently of the UI's eight hands."""
+    scope, current = _hand(hand_id)
+    fees = _fees(fees)
+    cutoff = _cutoff(db, origin, source, through)
+    if check is not None:
+        check()
+
+    def records():
+        previous = 0
+        rows = db.execute(
+            "SELECT hand,body FROM capture_learning_outcomes "
+            "WHERE origin=? AND source=? AND sequence<=? "
+            "AND substr(hand,1,length(?)+1)=?||':' ORDER BY length(hand),hand",
+            (origin, source, cutoff, scope, scope),
+        )
+        for hand, body in rows:
+            if check is not None:
+                check()
+            record_scope, number = _hand(hand)
+            if record_scope != scope or number <= previous:
+                raise ValueError("Stored settlements must have distinct ordered hands")
+            if number >= current:
+                raise ValueError("Current or future hand settlements cannot anchor a live decision")
+            previous = number
+            record = json.loads(body)
+            if not isinstance(record, Mapping):
+                raise ValueError("Invalid stored settlement")
+            yield number, {**record, "hand_id": hand}
+
+    return _derive_ordered(scope, current, fees, records())
+
+
+def _derive_ordered(scope, current, fees, records):
+    anchor = expected = outstanding = None
+    # Full history remains in SQLite; a long session need not copy every proof into RAM.
+    evidence, unknown_reasons = deque(maxlen=17), set()
+    for number, record in records:
+        parsed = None
+        if anchor is None:
+            if record.get("status") != "reconciled":
+                continue
+            parsed = _settlement(record)
+            if not parsed[2]:
+                continue
+            anchor = expected = number
+            outstanding = {}
         if number != expected:
             outstanding = None
             unknown_reasons.add("missing_settlement")
@@ -150,7 +187,7 @@ def derive_mushroom_ledger(*, hand_id, fees, settlements):
                 }
             )
             continue
-        paid, winner, amount = parsed.get(number) or _settlement(record)
+        paid, winner, amount = parsed or _settlement(record)
         reanchored = outstanding is None and bool(amount)
         if number != anchor and outstanding is not None:
             for player, contribution in paid.items():
@@ -174,6 +211,8 @@ def derive_mushroom_ledger(*, hand_id, fees, settlements):
         if reanchored:
             evidence[-1]["reanchor_reasons"] = sorted(unknown_reasons)
             unknown_reasons.clear()
+    if anchor is None:
+        raise ValueError("No observed whole-pool award establishes an opening ledger")
     if expected != current or outstanding is None:
         raise ValueError(
             "Settlement history has a gap or unreconciled hand without a later whole-pool award"
@@ -182,11 +221,16 @@ def derive_mushroom_ledger(*, hand_id, fees, settlements):
         outstanding[player] = outstanding.get(player, 0) + contribution
     pool = sum(outstanding.values())
     evidence.append(
-        {"hand_id": hand_id, "kind": "confirmed_current_fees", "paid": fees, "pool_after": pool}
+        {
+            "hand_id": f"{scope}:{current}",
+            "kind": "confirmed_current_fees",
+            "paid": fees,
+            "pool_after": pool,
+        }
     )
     return {
         "pool": pool,
         "outstanding": dict(sorted(outstanding.items())),
-        "anchor_hand_id": by_hand[anchor]["hand_id"],
-        "evidence": evidence,
+        "anchor_hand_id": f"{scope}:{anchor}",
+        "evidence": list(evidence),
     }

@@ -28,6 +28,7 @@ for (const pkg of metadata.packages.filter(p => p.source)) {
 }
 await writeFile(`${outdir}/THIRD_PARTY_RUST_NOTICES.txt`, rustNotices.join('\n\n'));
 const manifest = { manifest_version: 3, name: fixture ? 'TGTO Capture — SYNTHETIC TEST ONLY' : 'TGTO Research Capture',
+  version_name: 'Pre1.0',
   version: JSON.parse(await readFile('package.json', 'utf8')).version, minimum_chrome_version: '125', permissions: ['debugger', 'storage', 'sidePanel', 'alarms'],
   host_permissions: ['https://h5.wpk.com/*', 'http://127.0.0.1/*', ...backend.permissions],
   background: { service_worker: 'background.js', type: 'module' }, side_panel: { default_path: 'sidepanel.html' },

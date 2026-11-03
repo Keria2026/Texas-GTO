@@ -76,6 +76,7 @@ class MushroomSessionGame:
         horizon: int = 2,
         outstanding: Sequence[int] | None = None,
         waiting_for_top_up: Sequence[int] = (),
+        ante: int = 0,
     ):
         """Plan from known pre-fee balances, retaining already-paid refund ownership."""
         self.initial_stacks = tuple(stacks)
@@ -84,6 +85,7 @@ class MushroomSessionGame:
             button=button,
             outstanding=outstanding,
             waiting_for_top_up=waiting_for_top_up,
+            ante=ante,
         )
         if type(horizon) is not int or not 1 <= horizon <= 16:
             raise ValueError("Training horizon must be 1 to 16 completed hands")
@@ -99,6 +101,7 @@ class MushroomSessionGame:
         )
         self.funding_total = opening.funding_total
         self.button = button
+        self.ante = opening.ante
         self.horizon = horizon
         self.final_betting_round = 4 * horizon - 1
         opening_rules = {}
@@ -106,26 +109,36 @@ class MushroomSessionGame:
             opening_rules["openingOutstanding"] = self.initial_outstanding
         if self.initial_waiting_for_top_up:
             opening_rules["openingWaiting"] = self.initial_waiting_for_top_up
-        self.rules_version = "mushroom-session-horizon-v2:" + json.dumps(
-            {
-                "stacks": self.initial_stacks,
-                "button": button,
-                "horizon": horizon,
-                "smallBlind": 2,
-                "bigBlind": 4,
-                "straddle": 8,
-                "fees": [20, 40],
-                "horizonSettlement": "refund_outstanding_contributions",
-                "restraddle": "not_supported",
-                "shortStraddle": "wait_for_top_up_and_advance_blinds",
-                "topUpMinimumResultingStack": 400,
-                "waitingPlayers": "excluded_until_explicit_top_up",
-                "trainingExternalFunding": "none",
-                "informationEncoding": "sha256-public-recall-v1",
-                **opening_rules,
-            },
-            sort_keys=True,
-            separators=(",", ":"),
+        profile = "mushroom-session-horizon-v3" if ante else "mushroom-session-horizon-v2"
+        funding_rules = (
+            {"ante": ante, "anteAllIn": True, "topUpAmount": [800, 8000]}
+            if ante
+            else {"topUpMinimumResultingStack": 400}
+        )
+        self.rules_version = (
+            profile
+            + ":"
+            + json.dumps(
+                {
+                    "stacks": self.initial_stacks,
+                    "button": button,
+                    "horizon": horizon,
+                    "smallBlind": 2,
+                    "bigBlind": 4,
+                    "straddle": 8,
+                    "fees": [20, 40],
+                    "horizonSettlement": "refund_outstanding_contributions",
+                    "restraddle": "not_supported",
+                    "shortStraddle": "wait_for_top_up_and_advance_blinds",
+                    **funding_rules,
+                    "waitingPlayers": "excluded_until_explicit_top_up",
+                    "trainingExternalFunding": "none",
+                    "informationEncoding": "sha256-public-recall-v1",
+                    **opening_rules,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
         )
 
     def initial_state(self) -> MushroomGameState:
@@ -134,6 +147,7 @@ class MushroomSessionGame:
             button=self.button,
             outstanding=self.initial_outstanding,
             waiting_for_top_up=self.initial_waiting_for_top_up,
+            ante=self.ante,
         )
         table.begin_hand()
         return MushroomGameState(self.rules_version, table, (), ((),) * self.num_players)

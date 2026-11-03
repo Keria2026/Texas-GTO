@@ -21,12 +21,15 @@ class GameConfig(StrictModel):
     small_blind: int = Field(default=1, ge=1, le=100)
     big_blind: int = Field(default=2, ge=1, le=200)
     straddle: int | None = Field(default=None, ge=1)
+    ante: int = Field(default=0, ge=0)
     button: int = Field(default=0, ge=0, le=7)
     session_hands: int | None = Field(default=None, ge=1, le=4)
 
     @model_validator(mode="after")
     def compatible(self):
         if self.game_id == "mushroom":
+            if self.ante not in (0, 4):
+                raise ValueError("Mushroom ante must be zero or four")
             if self.num_players < 4 or (self.small_blind, self.big_blind, self.straddle) != (
                 2,
                 4,
@@ -53,6 +56,8 @@ class GameConfig(StrictModel):
             return self
         if self.session_hands is not None:
             raise ValueError("session_hands applies only to the mushroom training model")
+        if self.ante and self.game_id != "holdem":
+            raise ValueError("Ante applies only to Holdem or mushroom")
         if self.abstraction in ("mushroom_context", "mushroom_population"):
             raise ValueError("Mushroom abstractions apply only to mushroom sessions")
         if self.abstraction != "none" and self.game_id != "holdem":
@@ -78,7 +83,7 @@ class GameConfig(StrictModel):
                 raise ValueError("live straddle requires 4–8 Holdem players and exceeds big_blind")
             seat = (self.button + 3) % self.num_players
             stack = self.stacks[seat] if self.stacks is not None else self.stack
-            if stack < self.straddle:
+            if stack < self.ante + self.straddle:
                 raise ValueError("short straddle is unsupported")
         return self
 
@@ -183,6 +188,10 @@ class CoreTrainingResponse(StrictModel):
     game: GameConfig
     algorithm: Literal["pluribus"] = "pluribus"
     objective: Literal["expected_net_points"] = "expected_net_points"
+    rule_iterations: int = Field(default=0, ge=0)
+    training_roots: int = Field(default=0, ge=0)
+    observed_openings: int = Field(default=0, ge=0)
+    opening_capacity_reached: bool = False
     iterations: int = Field(default=0, ge=0)
     information_sets: int = Field(default=0, ge=0)
     averaged_information_sets: int = Field(default=0, ge=0)

@@ -7,7 +7,8 @@ import { resolve, join, dirname } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { chromium } from 'playwright';
 import { WebSocketServer } from 'ws';
-import { startBackend } from '../tools/reference-backend.ts';
+import { startBackend } from './reference-backend.ts';
+const manifest = JSON.parse(await readFile('dist/manifest.json', 'utf8'));
 
 async function until(check, timeout = 15000) {
   const end = Date.now() + timeout;
@@ -36,6 +37,7 @@ test('production package loads its service worker, WASM and sidebar without synt
     const status = await send(panel, { type: 'status' });
     assert.equal(status.wasm, 'ready'); assert.equal(status.tabs.length, 0);
     assert.equal(await panel.getByRole('heading', { name: 'TGTO 采集' }).count(), 1);
+    assert.equal(await panel.locator('.version').textContent(), `${manifest.version_name ?? manifest.version} · ${manifest.version}`);
   } finally { await context?.close(); await rm(directory, { recursive: true, force: true }); }
 });
 test('profile sidebar displays sample counts and clears stale data at sidebar widths', { timeout: 30000 }, async () => {
@@ -48,12 +50,12 @@ test('profile sidebar displays sample counts and clears stale data at sidebar wi
       if (!['sidepanel.html', 'sidepanel.js', 'sidepanel.css'].includes(name)) return route.abort();
       await route.fulfill({ body: await readFile(`dist/${name}`), contentType: name.endsWith('.html') ? 'text/html' : name.endsWith('.js') ? 'application/javascript' : 'text/css' });
     });
-    await page.addInitScript(profiles => {
+    await page.addInitScript(({ profiles, manifest }) => {
       window.profileTestStatus = { serverProfiles: profiles, sessions: [], tabs: [], transportState: 'ready', backendURL: 'ws://127.0.0.1:8765/v1/research/stream',
         wasm: 'ready', recent: [], businessStatus: 'inactive', businessPending: '0', businessRecent: [], backendCapabilities: ['capture_profiles_v1'] };
-      window.chrome = { runtime: { onMessage: { addListener() {}, removeListener() {} },
+      window.chrome = { runtime: { getManifest: () => manifest, onMessage: { addListener() {}, removeListener() {} },
         sendMessage: async () => ({ ok: true, value: structuredClone(window.profileTestStatus) }) } };
-    }, fixture);
+    }, { profiles: fixture, manifest });
     await page.goto('http://profiles.test/sidepanel.html');
     const section = page.locator('section[aria-labelledby="profiles-title"]');
     await section.getByText('本人', { exact: true }).waitFor();
@@ -86,13 +88,13 @@ test('recommendation sidebar shows raise total and payment, then clears on inval
       if (!['sidepanel.html', 'sidepanel.js', 'sidepanel.css'].includes(name)) return route.abort();
       await route.fulfill({ body: await readFile(`dist/${name}`), contentType: name.endsWith('.html') ? 'text/html' : name.endsWith('.js') ? 'application/javascript' : 'text/css' });
     });
-    await page.addInitScript(() => {
+    await page.addInitScript(manifest => {
       window.recommendationTestStatus = { sessions: [], tabs: [], transportState: 'ready', backendURL: 'ws://127.0.0.1:8765/v1/research/stream',
         wasm: 'ready', recent: [], businessStatus: 'ready', businessPending: '0', businessRecent: [], backendCapabilities: ['capture_recommendations_v1'],
-        recommendation: { status: 'ready', hand_id: 'table-1:2', selected_action: 0, expires_at_ms: Date.now() + 10000,
+        recommendation: { status: 'ready', hand_id: 'table-1:2', selected_action: 0, expires_at_ms: Date.now() + 10000, warnings: [],
           actions: [{ action: 'RAISE', label: 'raise_min', amount_delta: 22, raise_to: 24, probability: 1 }],
           model: { iterations: 5, version: 'synthetic-ui-only' } } };
-      window.chrome = { runtime: { id: 'synthetic-ui', onMessage: {
+      window.chrome = { runtime: { id: 'synthetic-ui', getManifest: () => manifest, onMessage: {
         addListener(fn) { window.recommendationChanged = fn; }, removeListener() {},
       }, sendMessage: async message => {
         const value = structuredClone(window.recommendationTestStatus);
@@ -102,7 +104,7 @@ test('recommendation sidebar shows raise total and payment, then clears on inval
         }
         return { ok: true, value };
       } } };
-    });
+    }, manifest);
     await page.goto('http://recommendation.test/sidepanel.html');
     const section = page.locator('section[aria-labelledby="recommendation-title"]');
     await section.locator('strong').getByText('加注 至 24 分，本次投入 22 分', { exact: true }).waitFor();
@@ -114,6 +116,25 @@ test('recommendation sidebar shows raise total and payment, then clears on inval
     const screenshot = resolve(process.env.TGTO_RECOMMENDATION_SCREENSHOT ?? '.impeccable/review/recommendation-synthetic.png');
     await mkdir(dirname(screenshot), { recursive: true });
     await section.screenshot({ path: screenshot });
+    await section.getByText('模型来源', { exact: true }).click();
+    await page.evaluate(() => {
+      Object.assign(window.recommendationTestStatus.recommendation.model, {
+        source: 'pluribus_search', search: { status: 'complete', iterations: 12, elapsed_ms: 900 },
+      });
+      window.recommendationTestStatus.recommendation.warnings.push('latest_completed_search_policy');
+      window.recommendationChanged({ type: 'state_changed' }, { id: 'synthetic-ui' });
+    });
+    await section.getByText(/Pluribus 限时搜索/).waitFor();
+    await section.getByText(/本次搜索完成 12 轮/).waitFor();
+    await section.getByText('行动策略：最新完整迭代，尚未验证收敛。', { exact: true }).waitFor();
+    await page.evaluate(() => {
+      Object.assign(window.recommendationTestStatus.recommendation.model, {
+        source: 'pluribus_blueprint', search: { status: 'coverage_missing', elapsed_ms: 70 },
+      });
+      window.recommendationChanged({ type: 'state_changed' }, { id: 'synthetic-ui' });
+    });
+    await section.getByText('后续策略覆盖不足，本次使用已训练的当前节点策略。', { exact: true }).waitFor();
+    assert.equal(await section.getByText('行动策略：最新完整迭代，尚未验证收敛。', { exact: true }).count(), 0);
     await page.evaluate(() => { window.holdNextStatus = true; });
     await page.getByRole('button', { name: '重新连接', exact: true }).click();
     await page.waitForFunction(() => typeof window.releaseStaleStatus === 'function');
@@ -132,6 +153,13 @@ test('recommendation sidebar shows raise total and payment, then clears on inval
       window.recommendationChanged({ type: 'state_changed' }, { id: 'synthetic-ui' });
     });
     await section.getByText('建议已过期，等待新的牌桌状态。', { exact: true }).waitFor();
+    assert.equal(await section.locator('strong').count(), 0);
+    await page.evaluate(() => {
+      window.recommendationTestStatus.recommendation = { status: 'unavailable',
+        reason: 'strategy_feedback_unavailable', actions: [], selected_action: null, model: null };
+      window.recommendationChanged({ type: 'state_changed' }, { id: 'synthetic-ui' });
+    });
+    await section.getByText('当前局面的训练反馈不足，暂不推荐行动。', { exact: true }).waitFor();
     assert.equal(await section.locator('strong').count(), 0);
     await page.evaluate(() => {
       window.recommendationTestStatus.transportState = 'retrying';

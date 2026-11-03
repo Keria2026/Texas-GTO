@@ -44,6 +44,7 @@ def assert_same_search(actual, expected):
     assert actual.probabilities == expected.probabilities
     assert actual.root_distribution == expected.root_distribution
     assert actual.policy.entries == expected.policy.entries
+    assert actual.average_policy.entries == expected.average_policy.entries
     assert actual.diagnostics.completed_iterations == expected.diagnostics.completed_iterations
     assert actual.subgame.rollout_budget.nodes == expected.subgame.rollout_budget.nodes
     assert actual.blueprint_fallback_queries == 0

@@ -19,6 +19,24 @@ function ready(source = 'synthetic-eight', through = '1'): any {
       horizon_hands: 2, opponent_adaptation: false }, warnings: ['two_hand_horizon'],
   };
 }
+test('Pre1.0 adaptation requires version, independent comparison and bounded mixture', () => {
+  const value = ready();
+  value.reason = 'searched_strategy'; value.model.source = 'profile_search'; value.model.opponent_adaptation = true;
+  value.model.search = { status: 'complete', iterations: 2, nodes: 200, rollout_nodes: 400,
+    root_draws: 16, elapsed_ms: 900, stop_reason: 'deadline' };
+  value.pr = { release: 'Pre1.0', search_root: 'street_start', target_depth: 4, opponent_version: 'b'.repeat(64),
+    adaptation_weight: 0.25, evaluation: { accepted: true, samples: 32, effective_samples: 30,
+      delta_points: 3, standard_error: 1, lower_bound: 1.04 } };
+  assert.equal(parseRecommendation(value).model?.source, 'profile_search');
+  for (const mutate of [
+    (m: any) => { delete m.pr; },
+    (m: any) => { m.pr.evaluation.accepted = false; },
+    (m: any) => { m.pr.opponent_version = null; },
+    (m: any) => { m.pr.adaptation_weight = 1; },
+    (m: any) => { m.pr.evaluation.lower_bound = 6; },
+    (m: any) => { m.pr.evaluation.effective_samples = 2; },
+  ]) { const bad = structuredClone(value); mutate(bad); assert.throws(() => parseRecommendation(bad)); }
+});
 test('recommendation rejects malformed amounts, frequencies, provenance and unavailable actions', () => {
   assert.equal(parseRecommendation(ready()).actions.length, 3);
   for (const change of [
@@ -39,6 +57,8 @@ test('recommendation rejects malformed amounts, frequencies, provenance and unav
   ]) { const value = ready(); change(value); assert.throws(() => parseRecommendation(value)); }
   const empty = ready(); Object.assign(empty, { status: 'unavailable', reason: 'strategy_not_trained',
     actions: [], selected_action: null, model: null, expires_at_ms: empty.issued_at_ms });
+  assert.equal(parseRecommendation(empty).actions.length, 0);
+  empty.reason = 'strategy_feedback_unavailable';
   assert.equal(parseRecommendation(empty).actions.length, 0);
 });
 
@@ -65,6 +85,32 @@ test('new local action, expiry, stop, lost history or changed turn immediately h
   }
   assert.equal(currentRecommendation(value, session, capture, value.expires_at_ms), undefined);
   db.db.close();
+});
+
+test('search provenance requires bounded completed work and explicit fallback diagnostics', () => {
+  const searched = ready();
+  searched.reason = 'searched_strategy'; searched.model.source = 'pluribus_search';
+  searched.warnings.push('latest_completed_search_policy');
+  searched.model.search = { status: 'complete', iterations: 20, nodes: 2000, rollout_nodes: 1000, root_draws: 160, elapsed_ms: 800, stop_reason: 'iterations' };
+  assert.equal(parseRecommendation(searched).model?.source, 'pluribus_search');
+  for (const change of [
+    (m: any) => { delete m.model.search; },
+    (m: any) => { m.model.search.iterations = 0; },
+    (m: any) => { m.model.search.iterations = 101; },
+    (m: any) => { m.model.search.nodes = 30001; },
+    (m: any) => { m.model.search.root_draws = 0; },
+    (m: any) => { m.model.search.elapsed_ms = -1; },
+    (m: any) => { m.model.search.status = 'converged'; },
+    (m: any) => { m.model.search.stop_reason = 'cancelled'; },
+    (m: any) => { m.reason = 'covered_blueprint'; },
+    (m: any) => { m.model.source = 'pluribus_blueprint'; m.reason = 'covered_blueprint'; },
+  ]) { const value = structuredClone(searched); change(value); assert.throws(() => parseRecommendation(value)); }
+  for (const status of ['coverage_missing', 'budget']) {
+    const value = ready(); value.model.search = { status, elapsed_ms: 400 };
+    assert.equal(parseRecommendation(value).model?.source, 'pluribus_blueprint');
+    value.model.search.iterations = 1;
+    assert.throws(() => parseRecommendation(value));
+  }
 });
 
 test('wire recommendations require negotiation and ACK, ignore old versions and clear on disconnect', async () => {

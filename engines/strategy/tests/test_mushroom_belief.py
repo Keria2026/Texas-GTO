@@ -26,8 +26,10 @@ def deal_to_decision(model, state, rng):
     return state
 
 
-def observed_prefix(*, button=0, flop=False, actions=0):
-    model = MushroomContextGame(MushroomSessionGame((800,) * 8, button=button, horizon=2))
+def observed_prefix(*, button=0, flop=False, actions=0, ante=0):
+    model = MushroomContextGame(
+        MushroomSessionGame((800,) * 8, button=button, horizon=2, ante=ante)
+    )
     rng = Random(29)
     state = deal_to_decision(model, model.initial_state(), rng)
     history = []
@@ -56,6 +58,7 @@ def strip_private(state):
             small_blind=engine.small_blind,
             big_blind=engine.big_blind,
             straddle=engine.straddle,
+            ante=engine.ante,
             button=engine.button,
         )
     )
@@ -108,7 +111,8 @@ def prefix_policy(model, state, history, *, zero=False):
             key = player, model.information_key(world, player)
             actions = model.legal_actions(world)
             weights = [
-                1 + (index + int(key[1][:2], 16)) % len(actions) for index in range(len(actions))
+                1 + (index + int(key[1].rsplit(":", 1)[-1][:2], 16)) % len(actions)
+                for index in range(len(actions))
             ]
             if zero:
                 weights[actions.index(observed_action)] = 0

@@ -31,7 +31,7 @@ def test_full_eight_seat_800_point_cross_hand_pluribus_checkpoint_is_reproducibl
 def test_mushroom_large_game_profile_does_not_enumerate_the_average_every_iteration():
     trainer = Trainer(MushroomSessionGame(), algorithm="pluribus")
     assert trainer.pluribus.strategy_interval == 1
-    assert trainer.pluribus.average_mode == "sampled_uniform"
+    assert trainer.pluribus.average_mode == "sampled_mixture"
     assert trainer.pluribus.average_samples == 16
 
 

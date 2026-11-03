@@ -20,9 +20,13 @@ class MushroomTable:
         button: int = 0,
         outstanding: Sequence[int] | None = None,
         waiting_for_top_up: Sequence[int] = (),
+        ante: int = 0,
     ):
         """Start between hands, before the next fees, with explicit existing escrow."""
         self.stacks = tuple(stacks)
+        if type(ante) is not int or ante not in (0, 4):
+            raise ValueError("Mushroom rules support the legacy no-ante profile or fixed ante 4")
+        self.ante = ante
         if not 4 <= len(self.stacks) <= 8 or any(
             type(value) is not int or value < 0 for value in self.stacks
         ):
@@ -112,7 +116,7 @@ class MushroomTable:
             if self.stacks[small_blind] <= 40:
                 waiting.add(small_blind)
                 eligible.remove(small_blind)
-            elif self.stacks[straddle] < 28:
+            elif self.stacks[straddle] < 28 + self.ante:
                 waiting.add(straddle)
                 eligible.remove(straddle)
             else:
@@ -126,7 +130,10 @@ class MushroomTable:
         # supplies the same action/deal order to the compact Holdem engine.
         local_button = (participants.index(small_blind) - 1) % len(participants)
         candidate = MushroomHand.start(
-            tuple(self.stacks[seat] for seat in participants), button=local_button, pool=self.pool
+            tuple(self.stacks[seat] for seat in participants),
+            button=local_button,
+            pool=self.pool,
+            ante=self.ante,
         )
         hand_id = str(self.hand_number + 1)
         self.ledger.begin_hand(
@@ -183,7 +190,9 @@ class MushroomTable:
             raise ValueError("Invalid seat")
         if type(amount) is not int or amount <= 0:
             raise ValueError("Top-up must be positive integer points")
-        if self.stacks[seat] + amount < 400:
+        if self.ante and not 800 <= amount <= 8000:
+            raise ValueError("Each top-up must add 800 to 8000 points")
+        if not self.ante and self.stacks[seat] + amount < 400:
             raise ValueError("Top-up must leave at least 400 points in the player's stack")
         balances = list(self.stacks)
         balances[seat] += amount

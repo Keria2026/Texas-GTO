@@ -76,7 +76,8 @@ class HoldemGame:
 
     A configured live straddle is posted left of the big blind (4–8 seats).
     Short straddles are rejected until the target table's policy is confirmed.
-    There are no antes, rake, re-straddles, burns or mushroom rewards. Omitting burn
+    Antes precede blinds and may be short all-ins. There is no rake, re-straddle,
+    burn or mushroom reward. Omitting burn
     cards preserves the distribution of visible cards in a shuffled deck. A
     short big blind does not lower the preflop bring-in while two funded players
     can still contest it. Odd chips go clockwise from the seat left of the
@@ -97,6 +98,7 @@ class HoldemGame:
         small_blind: int = 1,
         big_blind: int = 2,
         straddle: int | None = None,
+        ante: int = 0,
         button: int = 0,
         bet_fractions: Sequence[float] = (0.5, 1.0),
     ) -> None:
@@ -113,6 +115,8 @@ class HoldemGame:
             raise ValueError("blinds must be positive integers with small_blind <= big_blind")
         if type(button) is not int or not 0 <= button < self.num_players:
             raise ValueError("button is outside the table")
+        if type(ante) is not int or ante < 0:
+            raise ValueError("ante must be nonnegative integer chips")
         if straddle is not None and (
             type(straddle) is not int or straddle <= big_blind or self.num_players < 4
         ):
@@ -124,7 +128,8 @@ class HoldemGame:
         self.big_blind = big_blind
         self.button = button
         self.straddle = straddle
-        if straddle is not None and self.initial_stacks[self.straddle_player] < straddle:
+        self.ante = ante
+        if straddle is not None and self.initial_stacks[self.straddle_player] < ante + straddle:
             raise ValueError("short straddle is unsupported; require a fully funded straddle")
         self.bet_fractions = tuple(sorted(set(fractions)))
         self.rules_version = "holdem-nl-v1:" + json.dumps(
@@ -136,6 +141,7 @@ class HoldemGame:
                 "betFractions": self.bet_fractions,
                 "rake": 0,
                 **({"straddle": straddle} if straddle is not None else {}),
+                **({"ante": ante} if ante else {}),
             },
             sort_keys=True,
             separators=(",", ":"),
@@ -161,7 +167,8 @@ class HoldemGame:
         return tuple((start + offset) % self.num_players for offset in range(self.num_players))
 
     def initial_state(self) -> HoldemState:
-        stacks = list(self.initial_stacks)
+        antes = tuple(min(self.ante, stack) for stack in self.initial_stacks)
+        stacks = [stack - paid for stack, paid in zip(self.initial_stacks, antes, strict=True)]
         bets = [0] * self.num_players
         for player, blind in (
             (self.small_blind_player, self.small_blind),
@@ -186,7 +193,7 @@ class HoldemGame:
         return HoldemState(
             rules_version=self.rules_version,
             stacks=tuple(stacks),
-            contributions=tuple(bets),
+            contributions=tuple(bet + paid for bet, paid in zip(bets, antes, strict=True)),
             street_bets=tuple(bets),
             hole_cards=((),) * self.num_players,
             board=(),

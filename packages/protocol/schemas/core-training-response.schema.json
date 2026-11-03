@@ -96,6 +96,11 @@
             }
           ]
         },
+        "ante": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
         "button": {
           "type": "integer",
           "minimum": 0,
@@ -141,6 +146,24 @@
     "objective": {
       "type": "string",
       "const": "expected_net_points"
+    },
+    "rule_iterations": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "training_roots": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "observed_openings": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "opening_capacity_reached": {
+      "type": "boolean"
     },
     "iterations": {
       "type": "integer",

@@ -24,6 +24,7 @@ def public_facts(model, state):
             small_blind=engine.small_blind,
             big_blind=engine.big_blind,
             straddle=engine.straddle,
+            ante=engine.ante,
             button=engine.button,
         )
     )
@@ -63,8 +64,11 @@ def at_decision(model, state=None, seed=42):
 
 
 @pytest.mark.parametrize("players,button", [(4, 0), (4, 2), (8, 5)])
-def test_public_queries_match_complete_two_hand_trajectories(players, button):
-    model = MushroomContextGame(MushroomSessionGame((800,) * players, button=button, horizon=2))
+@pytest.mark.parametrize("ante", [0, 4])
+def test_public_queries_match_complete_two_hand_trajectories(players, button, ante):
+    model = MushroomContextGame(
+        MushroomSessionGame((800,) * players, button=button, horizon=2, ante=ante)
+    )
     state, rng = model.initial_state(), Random(31)
     rounds = set()
     while (actor := model.actor(state)) is not None:

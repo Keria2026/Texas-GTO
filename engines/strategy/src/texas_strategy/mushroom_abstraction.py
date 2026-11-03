@@ -85,6 +85,7 @@ def encode_context(
     pool,
     actions,
     legal_actions,
+    ante=0,
 ):
     """Pure legacy encoding; callers validate facts before crossing an external boundary.
 
@@ -130,7 +131,9 @@ def encode_context(
         actions,
         tuple(legal_actions),
     )
-    return sha256(json.dumps(context, separators=(",", ":")).encode()).hexdigest()
+    key = sha256(json.dumps(context, separators=(",", ":")).encode()).hexdigest()
+    # Retained no-ante rows must never supply coverage for the new rules.
+    return f"ante{ante}:{key}" if ante else key
 
 
 @dataclass(frozen=True)
@@ -148,10 +151,13 @@ class MushroomContextGame:
         if not isinstance(base_game, MushroomSessionGame):
             raise ValueError("Mushroom context requires a mushroom session game")
         self.base_game = base_game
+        self.training_key_prefix = f"ante{base_game.ante}:" if base_game.ante else ""
         self.num_players = base_game.num_players
         self.final_betting_round = base_game.final_betting_round
         # Reusing a policy across roots must not silently change deterministic continuation.
         context = {"stacks": base_game.initial_stacks, "button": base_game.button}
+        if base_game.ante:
+            context["ante"] = base_game.ante
         if any(base_game.initial_outstanding):
             context["openingOutstanding"] = base_game.initial_outstanding
         if base_game.initial_waiting_for_top_up:
@@ -270,6 +276,7 @@ class MushroomContextGame:
             pool=table.pool,
             actions=state.actions,
             legal_actions=self.action_map(state),
+            ante=self.base_game.ante,
         )
 
     def public_key(self, state):

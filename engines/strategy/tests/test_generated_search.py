@@ -64,6 +64,7 @@ def test_generated_and_finite_public_roots_have_identical_seeded_policy(game, sc
         **options,
     )
     assert generated.policy.entries == finite.policy.entries
+    assert generated.average_policy.entries == finite.average_policy.entries
     assert generated.actions == finite.actions
     assert generated.probabilities == finite.probabilities
     assert generated.subgame.rollout_samples == finite.subgame.rollout_samples

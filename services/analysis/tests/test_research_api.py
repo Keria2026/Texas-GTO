@@ -231,7 +231,7 @@ def test_mushroom_cross_hand_model_trains_and_reports_its_finite_horizon(client)
     saved = client.get("/v1/blueprints").json()["blueprints"]
     blueprint = next(item for item in saved if item["blueprint_id"] == job["blueprint_id"])
     assert blueprint["metadata"]["pluribus"]["strategy_interval"] == 1
-    assert blueprint["metadata"]["pluribus"]["average_mode"] == "sampled_uniform"
+    assert blueprint["metadata"]["pluribus"]["average_mode"] == "sampled_mixture"
     assert blueprint["metadata"]["pluribus"]["average_samples"] == 16
     assert blueprint["metadata"]["game_id"] == "mushroom"
 

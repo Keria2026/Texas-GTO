@@ -17,12 +17,19 @@ def probe(prefix):
 
     import texas_analysis
     from texas_game_core.kuhn import KuhnPoker
+    from texas_strategy.cfr import Trainer
     from texas_strategy.training_store import open_trainer
 
     assert Path(texas_analysis.__file__).is_relative_to(prefix)
     source = prefix / "data"
     (source / "core").mkdir()
-    first = open_trainer(KuhnPoker(), source / "core/training.sqlite3")
+    seed = prefix / "mixed-seed.json"
+    Trainer(
+        KuhnPoker(),
+        algorithm="pluribus",
+        pluribus={"average_mode": "sampled_mixture", "average_samples": 4},
+    ).save_checkpoint(seed)
+    first = open_trainer(KuhnPoker(), source / "core/training.sqlite3", checkpoint=seed)
     first.train(3)
     try:
         with sqlite3.connect(source / "capture.sqlite3") as db:
